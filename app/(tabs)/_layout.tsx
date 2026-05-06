@@ -25,6 +25,15 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
+        name="analysis"
+        options={{
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="analytics" size={26} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="add"
         options={{
           tabBarIcon: ({ focused }) => (
