@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   LayoutAnimation,
@@ -26,7 +26,12 @@ import {
   query,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
+import {
+  DEFAULT_CATEGORIES,
+  getDefaultCategoryDocId,
+} from "../constants/defaultCategories";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -49,28 +54,10 @@ type CategoryType = {
   goalId?: string;
 };
 
-const DEFAULT_CATEGORIES = [
-  { name: "Food", type: "Expense", icon: "fast-food-outline", isDefault: true },
-  { name: "Transport", type: "Expense", icon: "car-outline", isDefault: true },
-  { name: "Shopping", type: "Expense", icon: "cart-outline", isDefault: true },
-  { name: "Housing", type: "Expense", icon: "home-outline", isDefault: true },
-  {
-    name: "Utilities",
-    type: "Expense",
-    icon: "flash-outline",
-    isDefault: true,
-  },
-  { name: "Salary", type: "Income", icon: "cash-outline", isDefault: true },
-  {
-    name: "Investment",
-    type: "Income",
-    icon: "trending-up-outline",
-    isDefault: true,
-  },
-];
-
 export default function ManageCategoriesScreen() {
   const router = useRouter();
+  const defaultSeedInFlightRef = useRef(false);
+  const duplicateCleanupInFlightRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<"Expense" | "Income">("Expense");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -101,25 +88,88 @@ export default function ManageCategoriesScreen() {
       where("userId", "==", user.uid),
     );
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      if (snapshot.empty) {
+      const defaultGroups = new Map<string, typeof snapshot.docs>();
+
+      snapshot.docs.forEach((categoryDoc) => {
+        const data = categoryDoc.data();
+        if (!data.isDefault || data.parentId) return;
+
+        const key = `${data.type}:${String(data.name).trim().toLowerCase()}`;
+        const group = defaultGroups.get(key) || [];
+        group.push(categoryDoc);
+        defaultGroups.set(key, group);
+      });
+
+      const duplicateDefaultDocs = Array.from(defaultGroups.values()).flatMap(
+        (group) => group.slice(1),
+      );
+      const duplicateDefaultIds = new Set(
+        duplicateDefaultDocs.map((categoryDoc) => categoryDoc.id),
+      );
+
+      if (
+        duplicateDefaultDocs.length > 0 &&
+        !duplicateCleanupInFlightRef.current
+      ) {
+        duplicateCleanupInFlightRef.current = true;
         try {
-          const promises = DEFAULT_CATEGORIES.map((cat) =>
-            addDoc(collection(db, "categories"), {
-              userId: user.uid,
-              parentId: null,
-              createdAt: new Date(),
-              ...cat,
-            }),
-          );
-          await Promise.all(promises);
-          return;
+          const batch = writeBatch(db);
+          duplicateDefaultDocs.forEach((categoryDoc) => {
+            batch.delete(categoryDoc.ref);
+          });
+          await batch.commit();
+        } catch (error) {
+          console.error("Error cleaning duplicate default categories:", error);
+        } finally {
+          duplicateCleanupInFlightRef.current = false;
+        }
+      }
+
+      const existingDefaultKeys = new Set(
+        snapshot.docs
+          .filter((categoryDoc) => !duplicateDefaultIds.has(categoryDoc.id))
+          .map((categoryDoc) => {
+            const data = categoryDoc.data();
+            return `${data.type}:${String(data.name).trim().toLowerCase()}`;
+          }),
+      );
+      const missingDefaults = DEFAULT_CATEGORIES.filter(
+        (category) =>
+          !existingDefaultKeys.has(
+            `${category.type}:${category.name.toLowerCase()}`,
+          ),
+      );
+
+      if (missingDefaults.length > 0 && !defaultSeedInFlightRef.current) {
+        defaultSeedInFlightRef.current = true;
+        try {
+          const batch = writeBatch(db);
+          missingDefaults.forEach((cat) => {
+            batch.set(
+              doc(
+                db,
+                "categories",
+                getDefaultCategoryDocId(user.uid, cat.type, cat.name),
+              ),
+              {
+                userId: user.uid,
+                parentId: null,
+                createdAt: new Date(),
+                ...cat,
+              },
+            );
+          });
+          await batch.commit();
         } catch (error) {
           console.error("Error seeding default categories:", error);
+        } finally {
+          defaultSeedInFlightRef.current = false;
         }
       }
 
       const liveData: CategoryType[] = [];
       snapshot.forEach((doc) => {
+        if (duplicateDefaultIds.has(doc.id)) return;
         liveData.push({ id: doc.id, ...doc.data() } as CategoryType);
       });
 

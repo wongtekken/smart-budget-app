@@ -13,13 +13,17 @@ import {
 
 // 🚨 引入 Firebase 魔法
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { addDoc, collection, doc, setDoc } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
+import {
+  DEFAULT_CATEGORIES,
+  getDefaultCategoryDocId,
+} from "../constants/defaultCategories";
+import { doc, setDoc } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
 import { auth, db } from "../firebaseConfig"; // 确保你导出了 db
 
 // ==========================================
 // 🚨 1. 准备“新手大礼包” (系统自带的不可删除分类)
 // ==========================================
-const DEFAULT_CATEGORIES = [
+/*
   // 支出 (Expense)
   { name: "Food", type: "Expense", icon: "fast-food-outline", isDefault: true },
   { name: "Transport", type: "Expense", icon: "car-outline", isDefault: true },
@@ -39,7 +43,7 @@ const DEFAULT_CATEGORIES = [
     icon: "trending-up-outline",
     isDefault: true,
   },
-];
+*/
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -84,12 +88,19 @@ export default function RegisterScreen() {
       // 🚨 2. 账号创建成功的瞬间，立刻把默认分类塞进去！
       // ==========================================
       const promises = DEFAULT_CATEGORIES.map((cat) =>
-        addDoc(collection(db, "categories"), {
+        setDoc(
+          doc(
+            db,
+            "categories",
+            getDefaultCategoryDocId(user.uid, cat.type, cat.name),
+          ),
+          {
           userId: user.uid,
           parentId: null, // 大类，没有父级
           createdAt: new Date(),
           ...cat, // 展开 name, type, icon, isDefault
-        }),
+          },
+        ),
       );
 
       // 使用 Promise.all 并发执行，毫秒级瞬间完成这 7 条写入

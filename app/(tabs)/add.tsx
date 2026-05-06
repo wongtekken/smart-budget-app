@@ -243,8 +243,15 @@ export default function AddTransactionScreen() {
     source: Exclude<EntrySource, "manual">,
   ) => {
     setEntrySource(source);
+    const categoryFallback = userCategoryNames.includes("Other") ? "Other" : "";
+    const suggestedCategory = result.category?.trim();
+    const resolvedCategory =
+      suggestedCategory && userCategoryNames.includes(suggestedCategory)
+        ? suggestedCategory
+        : categoryFallback;
+
     if (result.amount) setAmount(result.amount.toString());
-    if (result.category && result.category !== "Other") setCategory(result.category);
+    if (resolvedCategory) setCategory(resolvedCategory);
     if (result.note || result.item_description) {
       setNote(result.note || result.item_description || "");
     }
@@ -256,7 +263,7 @@ export default function AddTransactionScreen() {
       result.type?.toLowerCase() === "income" ? "Income" : "Expense",
     );
 
-    if (!result.category || result.category === "Other") {
+    if (!resolvedCategory) {
       Alert.alert(
         "Category Needed",
         "AI filled the transaction details, but please choose the category manually.",
@@ -264,7 +271,12 @@ export default function AddTransactionScreen() {
       return;
     }
 
-    Alert.alert("AI Autofill Complete", "Please review the details before saving.");
+    Alert.alert(
+      "AI Autofill Complete",
+      suggestedCategory && suggestedCategory !== resolvedCategory
+        ? `Category set to ${resolvedCategory}. Please review before saving.`
+        : "Please review the details before saving.",
+    );
   };
 
   const handleReceiptScan = async () => {
