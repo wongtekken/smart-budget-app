@@ -12,8 +12,8 @@ import {
 } from "react-native";
 
 // 🚨 引入 Firebase 魔法
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, collection } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { addDoc, collection, doc, setDoc } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
 import { auth, db } from "../firebaseConfig"; // 确保你导出了 db
 
 // ==========================================
@@ -53,7 +53,7 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleRegister = async () => {
-    if (!email || !password || !confirmPassword) {
+    if (!email || !username.trim() || !password || !confirmPassword) {
       Alert.alert("Oops!", "Please fill in all fields.");
       return;
     }
@@ -70,6 +70,15 @@ export default function RegisterScreen() {
         password,
       );
       const user = userCredential.user;
+      const trimmedUsername = username.trim();
+
+      await updateProfile(user, { displayName: trimmedUsername });
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        username: trimmedUsername,
+        email: user.email,
+        createdAt: new Date(),
+      });
 
       // ==========================================
       // 🚨 2. 账号创建成功的瞬间，立刻把默认分类塞进去！

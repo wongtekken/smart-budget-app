@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 // ðŸš¨ å¼•å…¥å…¨æ–°çš„è®°å¿†æ¨¡å—
 // @ts-ignore
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -18,6 +18,9 @@ const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 // 🚨 使用带有持久化记忆的 auth 初始化方式
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-});
+export const auth =
+  typeof getReactNativePersistence === "function"
+    ? initializeAuth(app, {
+        persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+      })
+    : getAuth(app);

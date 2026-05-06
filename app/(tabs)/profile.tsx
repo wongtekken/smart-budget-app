@@ -1,7 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,10 +18,250 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { palette } from "../../constants/ui";
+import { formatCurrency, palette } from "../../constants/ui";
+import { auth, db } from "../../firebaseConfig";
+
+type ProfileData = {
+  name: string;
+  email: string;
+};
+
+type ProfileStats = {
+  achievementsUnlocked: number;
+  activeGoals: number;
+  activeReminders: number;
+  categoryCount: number;
+  hasAiTransaction: boolean;
+  hasCompletePastMonth: boolean;
+  monthlyBudget: number;
+  nonDefaultCount: number;
+  templateCount: number;
+  transactionCount: number;
+};
+
+type TransactionData = {
+  aiMode?: string;
+  date?: string;
+  source?: string;
+};
+
+const TOTAL_ACHIEVEMENTS = 6;
+
+const getLocalMonthStr = () => {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 7);
+};
+
+const getDefaultProfileName = (email: string) => {
+  const fallback = email.split("@")[0] || "User";
+  return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+};
+
+const formatItemCount = (count: number, singular: string, plural = `${singular}s`) =>
+  `${count} ${count === 1 ? singular : plural}`;
+
+const calculateAchievements = (stats: ProfileStats) =>
+  [
+    stats.hasCompletePastMonth,
+    stats.transactionCount > 0,
+    stats.nonDefaultCount > 0,
+    stats.transactionCount >= 1000,
+    stats.templateCount > 3,
+    stats.hasAiTransaction,
+  ].filter(Boolean).length;
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const currentMonth = useMemo(() => getLocalMonthStr(), []);
+  const [profile, setProfile] = useState<ProfileData>({
+    name: "Loading...",
+    email: "",
+  });
+  const [stats, setStats] = useState<ProfileStats>({
+    achievementsUnlocked: 0,
+    activeGoals: 0,
+    activeReminders: 0,
+    categoryCount: 0,
+    hasAiTransaction: false,
+    hasCompletePastMonth: false,
+    monthlyBudget: 0,
+    nonDefaultCount: 0,
+    templateCount: 0,
+    transactionCount: 0,
+  });
+
+  useEffect(() => {
+    let unsubscribers: (() => void)[] = [];
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribers = [];
+
+      if (!user) {
+        setProfile({ name: "Guest", email: "" });
+        setStats({
+          achievementsUnlocked: 0,
+          activeGoals: 0,
+          activeReminders: 0,
+          categoryCount: 0,
+          hasAiTransaction: false,
+          hasCompletePastMonth: false,
+          monthlyBudget: 0,
+          nonDefaultCount: 0,
+          templateCount: 0,
+          transactionCount: 0,
+        });
+        return;
+      }
+
+      const authEmail = user.email || "";
+      setProfile({
+        name: user.displayName || getDefaultProfileName(authEmail),
+        email: authEmail,
+      });
+
+      unsubscribers.push(
+        onSnapshot(doc(db, "users", user.uid), (snapshot) => {
+          const data = snapshot.exists() ? snapshot.data() : {};
+          const email = String(data.email || authEmail);
+          const name = String(
+            data.username ||
+              data.name ||
+              user.displayName ||
+              getDefaultProfileName(email),
+          );
+          setProfile({ name, email });
+        }),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "categories"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            const nonDefaultCount = snapshot.docs.filter(
+              (categoryDoc) => !categoryDoc.data().isDefault,
+            ).length;
+            setStats((current) => ({
+              ...current,
+              categoryCount: snapshot.size,
+              nonDefaultCount,
+              achievementsUnlocked: calculateAchievements({
+                ...current,
+                nonDefaultCount,
+              }),
+            }));
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "templates"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            setStats((current) => ({
+              ...current,
+              templateCount: snapshot.size,
+              achievementsUnlocked: calculateAchievements({
+                ...current,
+                templateCount: snapshot.size,
+              }),
+            }));
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          doc(db, "monthly_budgets", `${user.uid}_${currentMonth}`),
+          (snapshot) => {
+            const allocations: Record<string, number> = snapshot.exists()
+              ? snapshot.data().allocations || {}
+              : {};
+            const monthlyBudget = Object.values(allocations).reduce(
+              (sum, value) => sum + Number(value || 0),
+              0,
+            );
+            setStats((current) => ({ ...current, monthlyBudget }));
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "goals"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            setStats((current) => ({
+              ...current,
+              activeGoals: snapshot.size,
+            }));
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(
+            collection(db, "recurring_transactions"),
+            where("userId", "==", user.uid),
+            where("isActive", "==", true),
+          ),
+          (snapshot) => {
+            setStats((current) => ({
+              ...current,
+              activeReminders: snapshot.size,
+            }));
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "transactions"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            const transactions = snapshot.docs.map(
+              (transactionDoc) => transactionDoc.data() as TransactionData,
+            );
+            const transactionCount = transactions.length;
+            const hasCompletePastMonth = transactions.some((transaction) => {
+              const month = transaction.date?.slice(0, 7);
+              return month && month < currentMonth;
+            });
+            const hasAiTransaction = transactions.some((transaction) =>
+              Boolean(transaction.source || transaction.aiMode),
+            );
+
+            setStats((current) => ({
+              ...current,
+              hasAiTransaction,
+              hasCompletePastMonth,
+              transactionCount,
+              achievementsUnlocked: calculateAchievements({
+                ...current,
+                hasAiTransaction,
+                hasCompletePastMonth,
+                transactionCount,
+              }),
+            }));
+          },
+        ),
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [currentMonth]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.replace("/login");
+    } catch {
+      Alert.alert("Log Out Failed", "Please try again.");
+    }
+  };
 
   // 复用的菜单项组件
   const MenuItem = ({
@@ -64,8 +313,8 @@ export default function ProfileScreen() {
             <Ionicons name="person-circle" size={80} color={palette.accent} />
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>Developer</Text>
-            <Text style={styles.userEmail}>developer@fyp.com</Text>
+            <Text style={styles.userName}>{profile.name}</Text>
+            <Text style={styles.userEmail}>{profile.email || "No email linked"}</Text>
           </View>
           <TouchableOpacity style={styles.editButton}>
             <Ionicons name="pencil" size={16} color="#FFF" />
@@ -79,7 +328,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="grid"
             title="Manage Categories"
-            value="12 Items"
+            value={formatItemCount(stats.categoryCount, "Item")}
             onPress={() => router.push("/manage-categories")}
           />
           <View style={styles.divider} />
@@ -87,7 +336,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="trophy"
             title="Achievements"
-            value="2/6 Unlocked"
+            value={`${stats.achievementsUnlocked}/${TOTAL_ACHIEVEMENTS} Unlocked`}
             onPress={() => router.push("/achievement")}
           />
           <View style={styles.divider} />
@@ -95,7 +344,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="pie-chart"
             title="Budget Templates"
-            value="2 Saved"
+            value={`${stats.templateCount} Saved`}
             onPress={() => router.push("/template")}
           />
           <View style={styles.divider} />
@@ -103,7 +352,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="wallet"
             title="Monthly Budget"
-            value="RM 5,000"
+            value={formatCurrency(stats.monthlyBudget)}
             onPress={() => router.push("/budget")}
           />
           <View style={styles.divider} />
@@ -111,7 +360,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="flag"
             title="Financial Goals"
-            value="3 Active"
+            value={`${stats.activeGoals} Active`}
             onPress={() => router.push("/goal")}
           />
           <View style={styles.divider} />
@@ -119,32 +368,23 @@ export default function ProfileScreen() {
           <MenuItem
             icon="notifications"
             title="Reminders"
-            value="On"
+            value={
+              stats.activeReminders > 0
+                ? `${stats.activeReminders} Active`
+                : "Off"
+            }
             onPress={() => {}}
           />
         </View>
 
-        {/* 3. 数据与安全区域 */}
-        <Text style={styles.sectionTitle}>Data & Security</Text>
-        <View style={styles.menuCard}>
-          <MenuItem icon="download" title="Export Data" onPress={() => {}} />
-          <View style={styles.divider} />
-          <MenuItem
-            icon="lock-closed"
-            title="Face ID / PIN"
-            value="Off"
-            onPress={() => {}}
-          />
-        </View>
-
-        {/* 4. 退出登录 */}
+        {/* 3. 退出登录 */}
         <View style={[styles.menuCard, { marginTop: 10 }]}>
           <MenuItem
             icon="log-out"
             title="Log Out"
             isDestructive={true}
             // 点击退回到登录页
-            onPress={() => router.replace("/login")}
+            onPress={handleLogout}
           />
         </View>
       </ScrollView>
