@@ -1,181 +1,253 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar } from 'react-native';
-// 引入多种图标库以完美匹配你的设计图
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { FontAwesome5, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { onAuthStateChanged } from "firebase/auth";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import {
+  AchievementCategoryData,
+  AchievementEventData,
+  AchievementTemplateData,
+  AchievementTransactionData,
+  AchievementType,
+  buildAchievements,
+} from "../constants/achievements";
 import { palette } from "../constants/ui";
-
-// 1. 定义成就的数据类型
-type AchievementType = {
-  id: string;
-  title: string;
-  description: string;
-  iconName: any;
-  iconFamily: 'Ionicons' | 'FontAwesome5' | 'MaterialCommunity';
-  progress: number; // 0 到 100 的进度
-  isUnlocked: boolean;
-};
-
-// 2. 准备精美的假数据，还原你的设计图
-const ACHIEVEMENTS_DATA: AchievementType[] = [
-  // 已解锁的成就
-  {
-    id: '1',
-    title: 'Monthly Mastery',
-    description: 'Keep tracking for a complete calendar month',
-    iconName: 'calendar-check',
-    iconFamily: 'MaterialCommunity',
-    progress: 100,
-    isUnlocked: true,
-  },
-  {
-    id: '2',
-    title: 'First Step to Wealth',
-    description: 'Create the first transaction',
-    iconName: 'piggy-bank',
-    iconFamily: 'FontAwesome5',
-    progress: 100,
-    isUnlocked: true,
-  },
-  // 未解锁的成就
-  {
-    id: '3',
-    title: 'Category Creator',
-    description: 'Create the first category',
-    iconName: 'human-handsup', // 类似设计图的小人
-    iconFamily: 'MaterialCommunity',
-    progress: 85, // 模拟 85% 进度
-    isUnlocked: false,
-  },
-  {
-    id: '4',
-    title: 'Thousand-Transaction Titan',
-    description: 'Record a total of 1000 transactions',
-    iconName: 'yen-sign',
-    iconFamily: 'FontAwesome5',
-    progress: 40,
-    isUnlocked: false,
-  },
-  {
-    id: '5',
-    title: 'Template Master',
-    description: 'Create more than 3 custom budget templates',
-    iconName: 'chart-pie',
-    iconFamily: 'MaterialCommunity',
-    progress: 60,
-    isUnlocked: false,
-  },
-  {
-    id: '6',
-    title: 'Scan Savvy Start',
-    description: 'Successfully record a transaction draft using OCR ticket scanning for the first time',
-    iconName: 'scan-helper',
-    iconFamily: 'MaterialCommunity',
-    progress: 10,
-    isUnlocked: false,
-  },
-];
+import { auth, db } from "../firebaseConfig";
 
 export default function AchievementsScreen() {
   const router = useRouter();
+  const [categories, setCategories] = useState<AchievementCategoryData[]>([]);
+  const [templates, setTemplates] = useState<AchievementTemplateData[]>([]);
+  const [transactions, setTransactions] = useState<AchievementTransactionData[]>(
+    [],
+  );
+  const [events, setEvents] = useState<AchievementEventData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // 渲染不同家族的图标的魔法小助手
-  const renderIcon = (family: string, name: any) => {
+  useEffect(() => {
+    let unsubscribers: (() => void)[] = [];
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribers = [];
+
+      if (!user) {
+        setCategories([]);
+        setTemplates([]);
+        setTransactions([]);
+        setEvents([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "categories"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            setCategories(
+              snapshot.docs.map((categoryDoc) => categoryDoc.data()),
+            );
+            setLoading(false);
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "templates"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            setTemplates(snapshot.docs.map((templateDoc) => templateDoc.data()));
+            setLoading(false);
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(collection(db, "transactions"), where("userId", "==", user.uid)),
+          (snapshot) => {
+            setTransactions(
+              snapshot.docs.map(
+                (transactionDoc) =>
+                  transactionDoc.data() as AchievementTransactionData,
+              ),
+            );
+            setLoading(false);
+          },
+        ),
+      );
+
+      unsubscribers.push(
+        onSnapshot(
+          query(
+            collection(db, "achievement_events"),
+            where("userId", "==", user.uid),
+          ),
+          (snapshot) => {
+            setEvents(
+              snapshot.docs.map(
+                (eventDoc) => eventDoc.data() as AchievementEventData,
+              ),
+            );
+            setLoading(false);
+          },
+          () => {
+            setEvents([]);
+            setLoading(false);
+          },
+        ),
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, []);
+
+  const achievements = useMemo(
+    () => buildAchievements(categories, templates, transactions, events),
+    [categories, events, templates, transactions],
+  );
+
+  const renderIcon = (family: string, name: string) => {
     switch (family) {
-      case 'FontAwesome5': return <FontAwesome5 name={name} size={24} color="#FFF" />;
-      case 'MaterialCommunity': return <MaterialCommunityIcons name={name} size={28} color="#FFF" />;
-      default: return <Ionicons name={name} size={28} color="#FFF" />;
+      case "FontAwesome5":
+        return <FontAwesome5 name={name as any} size={24} color="#FFF" />;
+      case "MaterialCommunity":
+        return (
+          <MaterialCommunityIcons name={name as any} size={28} color="#FFF" />
+        );
+      default:
+        return <Ionicons name={name as any} size={28} color="#FFF" />;
     }
   };
 
-  // 独立的成就卡片组件
   const AchievementCard = ({ item }: { item: AchievementType }) => (
     <View style={styles.card}>
-      {/* 左侧圆形图标 */}
-      <View style={[styles.iconContainer, item.isUnlocked ? styles.iconUnlocked : styles.iconLocked]}>
+      <View
+        style={[
+          styles.iconContainer,
+          item.isUnlocked ? styles.iconUnlocked : styles.iconLocked,
+        ]}
+      >
         {renderIcon(item.iconFamily, item.iconName)}
       </View>
-      
-      {/* 右侧内容与进度条 */}
+
       <View style={styles.cardContent}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardDescription}>{item.description}</Text>
-        
-        {/* 🚨 进度条核心逻辑 */}
-        <View style={styles.progressBarBg}>
-          <View 
+        <View style={styles.titleRow}>
+          <Text style={styles.cardTitle}>{item.title}</Text>
+          <Text
             style={[
-              styles.progressBarFill, 
-              { width: `${item.progress}%` }, // 根据数据自动计算宽度！
-              item.isUnlocked ? styles.progressGreen : styles.progressOrange
-            ]} 
+              styles.progressText,
+              item.isUnlocked && styles.progressTextUnlocked,
+            ]}
+          >
+            {item.progress}%
+          </Text>
+        </View>
+        <Text style={styles.cardDescription}>{item.description}</Text>
+
+        <View style={styles.progressBarBg}>
+          <View
+            style={[
+              styles.progressBarFill,
+              { width: `${item.progress}%` },
+              item.isUnlocked ? styles.progressGreen : styles.progressOrange,
+            ]}
           />
         </View>
       </View>
     </View>
   );
 
-  const unlockedList = ACHIEVEMENTS_DATA.filter(a => a.isUnlocked);
-  const lockedList = ACHIEVEMENTS_DATA.filter(a => !a.isUnlocked);
+  const unlockedList = achievements.filter((achievement) => achievement.isUnlocked);
+  const lockedList = achievements.filter((achievement) => !achievement.isUnlocked);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {/* 顶部导航 */}
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerIcon}>
           <Ionicons name="arrow-back" size={32} color={palette.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Achievements</Text>
-        <TouchableOpacity style={styles.headerIcon}>
-          <Ionicons name="options-outline" size={30} color={palette.text} />
-        </TouchableOpacity>
+        <View style={styles.headerIcon} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* Unlocked 区域 */}
-        <Text style={styles.sectionTitle}>Unlocked Achievements</Text>
-        {unlockedList.map(item => (
-          <AchievementCard key={item.id} item={item} />
-        ))}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.sectionTitle}>
+            Unlocked Achievements ({unlockedList.length}/{achievements.length})
+          </Text>
+          {unlockedList.length > 0 ? (
+            unlockedList.map((item) => (
+              <AchievementCard key={item.id} item={item} />
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No achievements unlocked yet.</Text>
+          )}
 
-        {/* Locked 区域 */}
-        <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Locked Achievement</Text>
-        {lockedList.map(item => (
-          <AchievementCard key={item.id} item={item} />
-        ))}
-
-      </ScrollView>
+          <Text style={[styles.sectionTitle, { marginTop: 15 }]}>
+            Locked Achievements
+          </Text>
+          {lockedList.map((item) => (
+            <AchievementCard key={item.id} item={item} />
+          ))}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-// 排版与色彩映射
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA', // 极其微弱的灰底，让白色卡片更凸显
+    backgroundColor: "#F7F8FA",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: "#F0F0F0",
   },
   headerIcon: {
     width: 40,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: '900',
-    color: '#000',
+    fontWeight: "900",
+    color: "#000",
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -184,77 +256,88 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 22,
-    fontWeight: '900',
-    color: '#000',
+    fontWeight: "900",
+    color: "#000",
     marginBottom: 15,
   },
-  
-  // 卡片主体
+  emptyText: {
+    color: palette.textMuted,
+    fontSize: 15,
+    marginBottom: 10,
+  },
   card: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
+    flexDirection: "row",
+    backgroundColor: "#FFF",
     borderRadius: 16,
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#EFEFEF',
-    // 轻微阴影增加层次
-    shadowColor: '#000',
+    borderColor: "#EFEFEF",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
   },
-  
-  // 左侧图标
   iconContainer: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 15,
   },
   iconUnlocked: {
-    backgroundColor: '#FF9800', // 你的橘黄色
+    backgroundColor: "#FF9800",
   },
   iconLocked: {
-    backgroundColor: '#F5A623', // 稍微暗一点的橘色区分锁定
+    backgroundColor: "#C5CBD3",
   },
-  
-  // 右侧文字与进度
   cardContent: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
   },
   cardTitle: {
+    flex: 1,
     fontSize: 16,
-    fontWeight: '800',
-    color: '#4A4A4A',
+    fontWeight: "800",
+    color: "#4A4A4A",
     marginBottom: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: palette.warning,
+  },
+  progressTextUnlocked: {
+    color: palette.success,
   },
   cardDescription: {
     fontSize: 11,
-    color: '#999',
+    color: "#999",
     marginBottom: 10,
     lineHeight: 14,
   },
-  
-  // 进度条样式
   progressBarBg: {
     height: 6,
-    backgroundColor: '#F5F5F5', // 灰色底槽
+    backgroundColor: "#F5F5F5",
     borderRadius: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressBarFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 3,
   },
   progressGreen: {
-    backgroundColor: '#4CAF50', // 完成时的绿色
+    backgroundColor: "#4CAF50",
   },
   progressOrange: {
-    backgroundColor: '#FFA726', // 进行中的橘黄色
+    backgroundColor: "#FFA726",
   },
 });

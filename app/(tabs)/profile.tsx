@@ -18,6 +18,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  AchievementCategoryData,
+  AchievementEventData,
+  AchievementTemplateData,
+  AchievementTransactionData,
+  getAchievementSummary,
+} from "../../constants/achievements";
 import { formatCurrency, palette } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
 
@@ -27,25 +34,12 @@ type ProfileData = {
 };
 
 type ProfileStats = {
-  achievementsUnlocked: number;
   activeGoals: number;
   activeReminders: number;
   categoryCount: number;
-  hasAiTransaction: boolean;
-  hasCompletePastMonth: boolean;
   monthlyBudget: number;
-  nonDefaultCount: number;
   templateCount: number;
-  transactionCount: number;
 };
-
-type TransactionData = {
-  aiMode?: string;
-  date?: string;
-  source?: string;
-};
-
-const TOTAL_ACHIEVEMENTS = 6;
 
 const getLocalMonthStr = () => {
   const now = new Date();
@@ -61,16 +55,6 @@ const getDefaultProfileName = (email: string) => {
 const formatItemCount = (count: number, singular: string, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
 
-const calculateAchievements = (stats: ProfileStats) =>
-  [
-    stats.hasCompletePastMonth,
-    stats.transactionCount > 0,
-    stats.nonDefaultCount > 0,
-    stats.transactionCount >= 1000,
-    stats.templateCount > 3,
-    stats.hasAiTransaction,
-  ].filter(Boolean).length;
-
 export default function ProfileScreen() {
   const router = useRouter();
   const currentMonth = useMemo(() => getLocalMonthStr(), []);
@@ -79,17 +63,33 @@ export default function ProfileScreen() {
     email: "",
   });
   const [stats, setStats] = useState<ProfileStats>({
-    achievementsUnlocked: 0,
     activeGoals: 0,
     activeReminders: 0,
     categoryCount: 0,
-    hasAiTransaction: false,
-    hasCompletePastMonth: false,
     monthlyBudget: 0,
-    nonDefaultCount: 0,
     templateCount: 0,
-    transactionCount: 0,
   });
+  const [achievementData, setAchievementData] = useState<{
+    categories: AchievementCategoryData[];
+    events: AchievementEventData[];
+    templates: AchievementTemplateData[];
+    transactions: AchievementTransactionData[];
+  }>({
+    categories: [],
+    events: [],
+    templates: [],
+    transactions: [],
+  });
+  const achievementSummary = useMemo(
+    () =>
+      getAchievementSummary(
+        achievementData.categories,
+        achievementData.templates,
+        achievementData.transactions,
+        achievementData.events,
+      ),
+    [achievementData],
+  );
 
   useEffect(() => {
     let unsubscribers: (() => void)[] = [];
@@ -101,16 +101,17 @@ export default function ProfileScreen() {
       if (!user) {
         setProfile({ name: "Guest", email: "" });
         setStats({
-          achievementsUnlocked: 0,
           activeGoals: 0,
           activeReminders: 0,
           categoryCount: 0,
-          hasAiTransaction: false,
-          hasCompletePastMonth: false,
           monthlyBudget: 0,
-          nonDefaultCount: 0,
           templateCount: 0,
-          transactionCount: 0,
+        });
+        setAchievementData({
+          categories: [],
+          events: [],
+          templates: [],
+          transactions: [],
         });
         return;
       }
@@ -139,18 +140,14 @@ export default function ProfileScreen() {
         onSnapshot(
           query(collection(db, "categories"), where("userId", "==", user.uid)),
           (snapshot) => {
-            const nonDefaultCount = snapshot.docs.filter(
-              (categoryDoc) => !categoryDoc.data().isDefault,
-            ).length;
+            const categories = snapshot.docs.map(
+              (categoryDoc) => categoryDoc.data() as AchievementCategoryData,
+            );
             setStats((current) => ({
               ...current,
               categoryCount: snapshot.size,
-              nonDefaultCount,
-              achievementsUnlocked: calculateAchievements({
-                ...current,
-                nonDefaultCount,
-              }),
             }));
+            setAchievementData((current) => ({ ...current, categories }));
           },
         ),
       );
@@ -159,14 +156,14 @@ export default function ProfileScreen() {
         onSnapshot(
           query(collection(db, "templates"), where("userId", "==", user.uid)),
           (snapshot) => {
+            const templates = snapshot.docs.map(
+              (templateDoc) => templateDoc.data() as AchievementTemplateData,
+            );
             setStats((current) => ({
               ...current,
               templateCount: snapshot.size,
-              achievementsUnlocked: calculateAchievements({
-                ...current,
-                templateCount: snapshot.size,
-              }),
             }));
+            setAchievementData((current) => ({ ...current, templates }));
           },
         ),
       );
@@ -220,29 +217,28 @@ export default function ProfileScreen() {
           query(collection(db, "transactions"), where("userId", "==", user.uid)),
           (snapshot) => {
             const transactions = snapshot.docs.map(
-              (transactionDoc) => transactionDoc.data() as TransactionData,
+              (transactionDoc) =>
+                transactionDoc.data() as AchievementTransactionData,
             );
-            const transactionCount = transactions.length;
-            const hasCompletePastMonth = transactions.some((transaction) => {
-              const month = transaction.date?.slice(0, 7);
-              return month && month < currentMonth;
-            });
-            const hasAiTransaction = transactions.some((transaction) =>
-              Boolean(transaction.source || transaction.aiMode),
-            );
+            setAchievementData((current) => ({ ...current, transactions }));
+          },
+        ),
+      );
 
-            setStats((current) => ({
-              ...current,
-              hasAiTransaction,
-              hasCompletePastMonth,
-              transactionCount,
-              achievementsUnlocked: calculateAchievements({
-                ...current,
-                hasAiTransaction,
-                hasCompletePastMonth,
-                transactionCount,
-              }),
-            }));
+      unsubscribers.push(
+        onSnapshot(
+          query(
+            collection(db, "achievement_events"),
+            where("userId", "==", user.uid),
+          ),
+          (snapshot) => {
+            const events = snapshot.docs.map(
+              (eventDoc) => eventDoc.data() as AchievementEventData,
+            );
+            setAchievementData((current) => ({ ...current, events }));
+          },
+          () => {
+            setAchievementData((current) => ({ ...current, events: [] }));
           },
         ),
       );
@@ -336,7 +332,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="trophy"
             title="Achievements"
-            value={`${stats.achievementsUnlocked}/${TOTAL_ACHIEVEMENTS} Unlocked`}
+            value={`${achievementSummary.unlockedCount}/${achievementSummary.totalCount} Unlocked`}
             onPress={() => router.push("/achievement")}
           />
           <View style={styles.divider} />

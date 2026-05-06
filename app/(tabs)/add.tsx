@@ -56,6 +56,8 @@ type CategoryType = {
   type: string;
 };
 
+type EntrySource = "manual" | "receipt" | "voice";
+
 const InputField = ({ label, children }: InputFieldProps) => (
   <View style={styles.inputGroup}>
     <Text style={styles.inputLabel}>{label}</Text>
@@ -86,6 +88,7 @@ export default function AddTransactionScreen() {
   const [userCategoryNames, setUserCategoryNames] = useState<string[]>([]);
   const [, setIsAiLoading] = useState(false);
   const [aiMode, setAiMode] = useState<"receipt" | "voice" | null>(null);
+  const [entrySource, setEntrySource] = useState<EntrySource>("manual");
   const [isVoiceModalVisible, setVoiceModalVisible] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
 
@@ -228,14 +231,18 @@ export default function AddTransactionScreen() {
     }
   };
 
-  const applyAiResultToForm = (result: {
-    amount?: number;
-    category?: string;
-    date?: string;
-    item_description?: string;
-    note?: string;
-    type?: string;
-  }) => {
+  const applyAiResultToForm = (
+    result: {
+      amount?: number;
+      category?: string;
+      date?: string;
+      item_description?: string;
+      note?: string;
+      type?: string;
+    },
+    source: Exclude<EntrySource, "manual">,
+  ) => {
+    setEntrySource(source);
     if (result.amount) setAmount(result.amount.toString());
     if (result.category && result.category !== "Other") setCategory(result.category);
     if (result.note || result.item_description) {
@@ -290,7 +297,17 @@ export default function AddTransactionScreen() {
         userCategoryNames,
         formatDate(new Date()),
       );
-      applyAiResultToForm(result);
+      applyAiResultToForm(result, "receipt");
+      const user = auth.currentUser;
+      if (user) {
+        addDoc(collection(db, "achievement_events"), {
+          userId: user.uid,
+          type: "receipt_scan",
+          source: "receipt",
+          date: formatDate(new Date()),
+          createdAt: new Date(),
+        }).catch(() => undefined);
+      }
     } catch (error) {
       Alert.alert("Receipt Scanner Error", "Failed to scan receipt. Please try again.");
     } finally {
@@ -318,7 +335,7 @@ export default function AddTransactionScreen() {
           userCategoryNames,
           formatDate(new Date()),
         );
-        applyAiResultToForm(result);
+        applyAiResultToForm(result, "voice");
       } catch (error) {
         Alert.alert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
       } finally {
@@ -357,7 +374,7 @@ export default function AddTransactionScreen() {
       );
       setVoiceModalVisible(false);
       setVoiceTranscript("");
-      applyAiResultToForm(result);
+      applyAiResultToForm(result, "voice");
     } catch (error) {
       Alert.alert("Voice Parse Error", "Failed to parse the transcript. Please try again.");
     } finally {
@@ -387,6 +404,14 @@ export default function AddTransactionScreen() {
     try {
       const numericAmount = parseFloat(amount);
       const now = new Date();
+      const sourceFields =
+        entrySource === "manual"
+          ? {}
+          : {
+              aiMode: entrySource,
+              entrySource,
+              source: entrySource,
+            };
 
       if (editId) {
         await updateDoc(doc(db, "transactions", editId), {
@@ -397,6 +422,7 @@ export default function AddTransactionScreen() {
           type: selectedSegment,
           recurring: recurring,
           updatedAt: now,
+          ...sourceFields,
         });
         Alert.alert("Success!", "Transaction updated successfully.");
       } else {
@@ -409,6 +435,8 @@ export default function AddTransactionScreen() {
           type: selectedSegment,
           recurring: recurring,
           createdAt: now,
+          entrySource,
+          source: entrySource,
         });
 
         if (recurring !== "Never") {
@@ -435,6 +463,7 @@ export default function AddTransactionScreen() {
       setNextRecurringDate(new Date());
       setRecurring("Never");
       setEditId(null);
+      setEntrySource("manual");
 
       router.setParams({
         returnedType: "",
