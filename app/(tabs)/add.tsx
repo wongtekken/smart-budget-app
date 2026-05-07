@@ -22,7 +22,6 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator, // 🚨 新增：用于显示 AI 解析时的 Loading 圈
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -33,6 +32,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAppDialog } from "../../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
 
@@ -67,6 +67,23 @@ const InputField = ({ label, children }: InputFieldProps) => (
 
 export default function AddTransactionScreen() {
   const router = useRouter();
+  const { showDialog } = useAppDialog();
+  const appAlert = (title: string, message = "") => {
+    const lowerTitle = title.toLowerCase();
+    const type: "error" | "info" | "success" | "warning" = lowerTitle.includes(
+      "success",
+    )
+      ? "success"
+      : lowerTitle.includes("error") || lowerTitle.includes("failed")
+        ? "error"
+        : lowerTitle.includes("permission") ||
+            lowerTitle.includes("needed") ||
+            lowerTitle.includes("oops")
+          ? "warning"
+          : "info";
+
+    showDialog({ title, message, type });
+  };
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
   const {
@@ -186,7 +203,7 @@ export default function AddTransactionScreen() {
     if (Date.now() >= 0) return;
     // 作为测试阶段，我们先让用户在 Note 框输入文字，然后按麦克风识别
     if (!note.trim()) {
-      Alert.alert(
+      appAlert(
         "Hint",
         "Please type your transaction details in the Note field first (e.g., 'spent 15 on lunch'), then tap this icon. (Real voice input coming soon!)",
       );
@@ -212,20 +229,20 @@ export default function AddTransactionScreen() {
           result.category === "NeedsNewCategory" ||
           result.category === "Other"
         ) {
-          Alert.alert(
+          appAlert(
             "Category Needed",
             "AI couldn't map this to your existing categories. Amount is filled, please select a category manually.",
           );
         } else if (result.category) {
           setCategory(result.category);
-          Alert.alert(
+          appAlert(
             "✨ Smart Parse Success",
             "Form autofilled. Please review and save.",
           );
         }
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to parse text. Please try again.");
+      appAlert("Error", "Failed to parse text. Please try again.");
     } finally {
       setIsAiLoading(false);
     }
@@ -264,14 +281,14 @@ export default function AddTransactionScreen() {
     );
 
     if (!resolvedCategory) {
-      Alert.alert(
+      appAlert(
         "Category Needed",
         "AI filled the transaction details, but please choose the category manually.",
       );
       return;
     }
 
-    Alert.alert(
+    appAlert(
       "AI Autofill Complete",
       suggestedCategory && suggestedCategory !== resolvedCategory
         ? `Category set to ${resolvedCategory}. Please review before saving.`
@@ -283,7 +300,7 @@ export default function AddTransactionScreen() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
 
     if (!permission.granted) {
-      Alert.alert("Camera Permission", "Please allow camera access to scan receipts.");
+      appAlert("Camera Permission", "Please allow camera access to scan receipts.");
       return;
     }
 
@@ -297,7 +314,7 @@ export default function AddTransactionScreen() {
 
     const asset = image.assets[0];
     if (!asset?.base64) {
-      Alert.alert("Receipt Error", "Could not read the receipt image. Please try again.");
+      appAlert("Receipt Error", "Could not read the receipt image. Please try again.");
       return;
     }
 
@@ -321,7 +338,7 @@ export default function AddTransactionScreen() {
         }).catch(() => undefined);
       }
     } catch (error) {
-      Alert.alert("Receipt Scanner Error", "Failed to scan receipt. Please try again.");
+      appAlert("Receipt Scanner Error", "Failed to scan receipt. Please try again.");
     } finally {
       setAiMode(null);
     }
@@ -335,7 +352,7 @@ export default function AddTransactionScreen() {
         const recordingUri = audioRecorder.uri;
 
         if (!recordingUri) {
-          Alert.alert("Voice Error", "Could not find the recorded audio. Please try again.");
+          appAlert("Voice Error", "Could not find the recorded audio. Please try again.");
           return;
         }
 
@@ -349,7 +366,7 @@ export default function AddTransactionScreen() {
         );
         applyAiResultToForm(result, "voice");
       } catch (error) {
-        Alert.alert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
+        appAlert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
       } finally {
         setAiMode(null);
       }
@@ -359,7 +376,7 @@ export default function AddTransactionScreen() {
     const permission = await AudioModule.requestRecordingPermissionsAsync();
 
     if (!permission.granted) {
-      Alert.alert("Microphone Permission", "Please allow microphone access to use voice entry.");
+      appAlert("Microphone Permission", "Please allow microphone access to use voice entry.");
       return;
     }
 
@@ -367,13 +384,13 @@ export default function AddTransactionScreen() {
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
     } catch (error) {
-      Alert.alert("Voice Error", "Could not start recording. Please try again.");
+      appAlert("Voice Error", "Could not start recording. Please try again.");
     }
   };
 
   const handleVoiceTranscriptParse = async () => {
     if (!voiceTranscript.trim()) {
-      Alert.alert("Voice Transcript", "Please enter or paste the voice transcript first.");
+      appAlert("Voice Transcript", "Please enter or paste the voice transcript first.");
       return;
     }
 
@@ -388,7 +405,7 @@ export default function AddTransactionScreen() {
       setVoiceTranscript("");
       applyAiResultToForm(result, "voice");
     } catch (error) {
-      Alert.alert("Voice Parse Error", "Failed to parse the transcript. Please try again.");
+      appAlert("Voice Parse Error", "Failed to parse the transcript. Please try again.");
     } finally {
       setAiMode(null);
     }
@@ -399,17 +416,17 @@ export default function AddTransactionScreen() {
   // ==========================================
   const handleSave = async () => {
     if (!amount) {
-      Alert.alert("Oops!", "Please enter an amount.");
+      appAlert("Oops!", "Please enter an amount.");
       return;
     }
     if (!category) {
-      Alert.alert("Oops!", "Please choose a category.");
+      appAlert("Oops!", "Please choose a category.");
       return;
     }
 
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Error", "You must be logged in to save a transaction.");
+      appAlert("Error", "You must be logged in to save a transaction.");
       return;
     }
 
@@ -436,7 +453,7 @@ export default function AddTransactionScreen() {
           updatedAt: now,
           ...sourceFields,
         });
-        Alert.alert("Success!", "Transaction updated successfully.");
+        appAlert("Success!", "Transaction updated successfully.");
       } else {
         await addDoc(collection(db, "transactions"), {
           userId: user.uid,
@@ -465,7 +482,7 @@ export default function AddTransactionScreen() {
             createdAt: now,
           });
         }
-        Alert.alert("Success!", "Transaction saved successfully.");
+        appAlert("Success!", "Transaction saved successfully.");
       }
 
       setAmount("");
@@ -490,7 +507,7 @@ export default function AddTransactionScreen() {
       router.push("/(tabs)");
     } catch (error) {
       console.error("保存失败: ", error);
-      Alert.alert("Error", "Failed to save transaction.");
+      appAlert("Error", "Failed to save transaction.");
     }
   };
 
@@ -1040,3 +1057,4 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 });
+

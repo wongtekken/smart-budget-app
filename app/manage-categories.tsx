@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   LayoutAnimation,
   Modal,
   Platform,
@@ -28,6 +27,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import { useAppDialog } from "../components/app-dialog";
 import {
   DEFAULT_CATEGORIES,
   getDefaultCategoryDocId,
@@ -56,6 +56,7 @@ type CategoryType = {
 
 export default function ManageCategoriesScreen() {
   const router = useRouter();
+  const { showConfirm, showDialog } = useAppDialog();
   const defaultSeedInFlightRef = useRef(false);
   const duplicateCleanupInFlightRef = useRef(false);
 
@@ -210,53 +211,61 @@ export default function ManageCategoriesScreen() {
   // 🚨 触发长按：打开自定义菜单
   const handleLongPress = (category: CategoryType, isParent: boolean) => {
     if (category.isDefault) {
-      Alert.alert(
-        "System Category",
-        "Default categories cannot be edited or deleted.",
-      );
+      showDialog({
+        title: "System Category",
+        message: "Default categories cannot be edited or deleted.",
+        type: "info",
+      });
       return;
     }
     if (category.name.startsWith("🎯") || category.isGoal) {
-      Alert.alert(
-        "Goal Category",
-        "This is linked to a Goal. Please manage it inside the 'Goal' tab.",
-      );
+      showDialog({
+        title: "Goal Category",
+        message: "This is linked to a Goal. Please manage it inside the Goal tab.",
+        type: "info",
+      });
       return;
     }
     setSelectedForAction({ cat: category, isParent });
     setActionMenuVisible(true);
   };
 
-  const handleDelete = (id: string, name: string, isParent: boolean) => {
-    Alert.alert(
-      "Delete Category",
-      `Are you sure you want to delete "${name}"? ${isParent ? "\n(All subcategories inside will also be deleted!)" : ""}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              if (isParent) {
-                const subs = getSubcategories(id);
-                for (const sub of subs) {
-                  await deleteDoc(doc(db, "categories", sub.id));
-                }
-              }
-              await deleteDoc(doc(db, "categories", id));
-            } catch (error) {
-              Alert.alert("Error", "Failed to delete.");
-            }
-          },
-        },
-      ],
-    );
+  const handleDelete = async (id: string, name: string, isParent: boolean) => {
+    const confirmed = await showConfirm({
+      title: "Delete Category",
+      message: `Are you sure you want to delete "${name}"? ${
+        isParent ? "All subcategories inside will also be deleted." : ""
+      }`,
+      confirmLabel: "Delete",
+      type: "error",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      if (isParent) {
+        const subs = getSubcategories(id);
+        for (const sub of subs) {
+          await deleteDoc(doc(db, "categories", sub.id));
+        }
+      }
+      await deleteDoc(doc(db, "categories", id));
+    } catch (error) {
+      showDialog({
+        title: "Error",
+        message: "Failed to delete.",
+        type: "error",
+      });
+    }
   };
 
   const handleSaveCategory = async () => {
     if (!newCategoryName.trim()) {
-      Alert.alert("Oops", "Please enter a name.");
+      showDialog({
+        title: "Oops",
+        message: "Please enter a name.",
+        type: "warning",
+      });
       return;
     }
     const user = auth.currentUser;
@@ -280,7 +289,11 @@ export default function ManageCategoriesScreen() {
       }
       closeModal();
     } catch (error) {
-      Alert.alert("Error", "Failed to save category.");
+      showDialog({
+        title: "Error",
+        message: "Failed to save category.",
+        type: "error",
+      });
     }
   };
 

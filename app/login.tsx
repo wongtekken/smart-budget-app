@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -13,11 +12,13 @@ import {
 
 // 🚨 新增：引入 Firebase 登录魔法和配置文件
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { useAppDialog } from "../components/app-dialog";
 import { palette, radius } from "../constants/ui";
 import { auth } from "../firebaseConfig";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { showDialog } = useAppDialog();
 
   // UI 状态控制
   const [showPassword, setShowPassword] = useState(false);
@@ -31,7 +32,11 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     // 检查是否为空
     if (!email || !password) {
-      Alert.alert("Oops!", "Please enter your email and password.");
+      showDialog({
+        title: "Oops!",
+        message: "Please enter your email and password.",
+        type: "warning",
+      });
       return;
     }
 
@@ -42,7 +47,11 @@ export default function LoginScreen() {
       router.replace("/(tabs)");
     } catch (error: any) {
       // 如果密码错误或账号不存在，Firebase 会告诉你
-      Alert.alert("Login Failed", "Invalid email or password.");
+      showDialog({
+        title: "Login Failed",
+        message: "Invalid email or password.",
+        type: "error",
+      });
     }
   };
 

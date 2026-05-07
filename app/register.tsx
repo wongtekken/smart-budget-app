@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
 
 // 🚨 引入 Firebase 魔法
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { useAppDialog } from "../components/app-dialog";
 import {
   DEFAULT_CATEGORIES,
   getDefaultCategoryDocId,
@@ -47,6 +47,7 @@ import { auth, db } from "../firebaseConfig"; // 确保你导出了 db
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { showDialog } = useAppDialog();
 
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -58,11 +59,19 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!email || !username.trim() || !password || !confirmPassword) {
-      Alert.alert("Oops!", "Please fill in all fields.");
+      showDialog({
+        title: "Oops!",
+        message: "Please fill in all fields.",
+        type: "warning",
+      });
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match.");
+      showDialog({
+        title: "Error",
+        message: "Passwords do not match.",
+        type: "error",
+      });
       return;
     }
 
@@ -107,13 +116,18 @@ export default function RegisterScreen() {
       await Promise.all(promises);
 
       // 3. 成功后弹窗并跳转主页
-      Alert.alert(
-        "Success!",
-        "Account created! Default categories have been set up for you.",
-      );
+      showDialog({
+        title: "Success!",
+        message: "Account created! Default categories have been set up for you.",
+        type: "success",
+      });
       router.replace("/(tabs)");
     } catch (error: any) {
-      Alert.alert("Registration Failed", error.message);
+      showDialog({
+        title: "Registration Failed",
+        message: error.message,
+        type: "error",
+      });
     }
   };
 
