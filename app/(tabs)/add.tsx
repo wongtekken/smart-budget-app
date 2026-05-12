@@ -8,6 +8,7 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import { File } from "expo-file-system";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -57,6 +58,9 @@ type CategoryType = {
 };
 
 type EntrySource = "manual" | "receipt" | "voice";
+
+const RECEIPT_MAX_EDGE = 1600;
+const RECEIPT_JPEG_QUALITY = 0.78;
 
 const InputField = ({ label, children }: InputFieldProps) => (
   <View style={styles.inputGroup}>
@@ -122,6 +126,31 @@ export default function AddTransactionScreen() {
   const formatDate = (d: Date) => {
     const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
     return localDate.toISOString().split("T")[0];
+  };
+
+  const prepareReceiptImage = async (asset: ImagePicker.ImagePickerAsset) => {
+    const longestEdge = Math.max(asset.width || 0, asset.height || 0);
+    const resize =
+      longestEdge > RECEIPT_MAX_EDGE
+        ? asset.width && asset.height && asset.width >= asset.height
+          ? { width: RECEIPT_MAX_EDGE }
+          : { height: RECEIPT_MAX_EDGE }
+        : null;
+
+    const processed = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      resize ? [{ resize }] : [],
+      {
+        base64: true,
+        compress: RECEIPT_JPEG_QUALITY,
+        format: ImageManipulator.SaveFormat.JPEG,
+      },
+    );
+
+    return {
+      base64: processed.base64,
+      mimeType: "image/jpeg",
+    };
   };
 
   useEffect(() => {
@@ -306,23 +335,28 @@ export default function AddTransactionScreen() {
 
     const image = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: true,
-      quality: 0.7,
+      base64: false,
+      quality: 1,
     });
 
     if (image.canceled) return;
 
     const asset = image.assets[0];
-    if (!asset?.base64) {
+    if (!asset?.uri) {
       appAlert("Receipt Error", "Could not read the receipt image. Please try again.");
       return;
     }
 
     setAiMode("receipt");
     try {
+      const receiptImage = await prepareReceiptImage(asset);
+      if (!receiptImage.base64) {
+        throw new Error("Failed to prepare receipt image.");
+      }
+
       const result = await scanReceiptImage(
-        asset.base64,
-        asset.mimeType || "image/jpeg",
+        receiptImage.base64,
+        receiptImage.mimeType,
         userCategoryNames,
         formatDate(new Date()),
       );
@@ -338,7 +372,12 @@ export default function AddTransactionScreen() {
         }).catch(() => undefined);
       }
     } catch (error) {
-      appAlert("Receipt Scanner Error", "Failed to scan receipt. Please try again.");
+      appAlert(
+        "Receipt Scanner Error",
+        error instanceof Error
+          ? error.message
+          : "Failed to scan receipt. Please try again.",
+      );
     } finally {
       setAiMode(null);
     }

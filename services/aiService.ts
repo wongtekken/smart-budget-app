@@ -1,4 +1,5 @@
 const VERCEL_API_BASE_URL = "https://fyp-ai-backend.vercel.app/api";
+const DEFAULT_REQUEST_TIMEOUT_MS = 35000;
 
 export type VoiceExpenseResult = {
   amount: number;
@@ -24,14 +25,32 @@ export type ReceiptScanResult = {
   note?: string;
 };
 
-async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`${VERCEL_API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+async function postJson<T>(
+  path: string,
+  body: Record<string, unknown>,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${VERCEL_API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Request timed out. Please try again with a clearer receipt photo.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = await response.json().catch(() => null);
 
@@ -82,10 +101,14 @@ export const scanReceiptImage = async (
   userCategories: string[],
   currentDate: string,
 ) => {
-  return postJson<ReceiptScanResult>("/scan-receipt", {
-    imageBase64,
-    mimeType,
-    userCategories,
-    currentDate,
-  });
+  return postJson<ReceiptScanResult>(
+    "/scan-receipt",
+    {
+      imageBase64,
+      mimeType,
+      userCategories,
+      currentDate,
+    },
+    45000,
+  );
 };
