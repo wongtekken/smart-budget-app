@@ -1,23 +1,30 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
 import {
   collection,
   doc,
   onSnapshot,
   query,
+  setDoc,
   where,
 } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAppDialog } from "../../components/app-dialog";
 import {
   AchievementCategoryData,
   AchievementEventData,
@@ -57,11 +64,15 @@ const formatItemCount = (count: number, singular: string, plural = `${singular}s
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { showDialog } = useAppDialog();
   const currentMonth = useMemo(() => getLocalMonthStr(), []);
   const [profile, setProfile] = useState<ProfileData>({
     name: "Loading...",
     email: "",
   });
+  const [draftName, setDraftName] = useState("");
+  const [isProfileModalVisible, setProfileModalVisible] = useState(false);
+  const [isSavingProfile, setSavingProfile] = useState(false);
   const [stats, setStats] = useState<ProfileStats>({
     activeGoals: 0,
     activeReminders: 0,
@@ -259,6 +270,82 @@ export default function ProfileScreen() {
     }
   };
 
+  const openManageProfile = () => {
+    setDraftName(profile.name === "Loading..." ? "" : profile.name);
+    setProfileModalVisible(true);
+  };
+
+  const closeManageProfile = () => {
+    if (isSavingProfile) return;
+    setProfileModalVisible(false);
+    setDraftName("");
+  };
+
+  const handleSaveProfile = async () => {
+    const user = auth.currentUser;
+    const trimmedName = draftName.trim();
+
+    if (!user) {
+      showDialog({
+        title: "Profile Error",
+        message: "Please log in again before updating your profile.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (trimmedName.length < 2) {
+      showDialog({
+        title: "Name Required",
+        message: "Please enter a display name with at least 2 characters.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (trimmedName.length > 40) {
+      showDialog({
+        title: "Name Too Long",
+        message: "Please keep your display name within 40 characters.",
+        type: "warning",
+      });
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      await updateProfile(user, { displayName: trimmedName });
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          email: user.email || profile.email,
+          name: trimmedName,
+          uid: user.uid,
+          updatedAt: new Date(),
+          username: trimmedName,
+        },
+        { merge: true },
+      );
+
+      setProfile((current) => ({ ...current, name: trimmedName }));
+      setProfileModalVisible(false);
+      setDraftName("");
+      showDialog({
+        title: "Profile Updated",
+        message: "Your profile name has been saved.",
+        type: "success",
+      });
+    } catch {
+      showDialog({
+        title: "Update Failed",
+        message: "Could not update your profile. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   // 复用的菜单项组件
   const MenuItem = ({
     icon,
@@ -312,7 +399,7 @@ export default function ProfileScreen() {
             <Text style={styles.userName}>{profile.name}</Text>
             <Text style={styles.userEmail}>{profile.email || "No email linked"}</Text>
           </View>
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity style={styles.editButton} onPress={openManageProfile}>
             <Ionicons name="pencil" size={16} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -384,6 +471,76 @@ export default function ProfileScreen() {
           />
         </View>
       </ScrollView>
+
+      <Modal
+        visible={isProfileModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closeManageProfile}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.profileModalContent}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Manage Profile</Text>
+            <Text style={styles.modalSubtitle}>
+              Update the name shown across your account.
+            </Text>
+
+            <View style={styles.profileAvatarPreview}>
+              <Ionicons name="person-circle" size={76} color={palette.accent} />
+            </View>
+
+            <Text style={styles.fieldLabel}>Display Name</Text>
+            <TextInput
+              style={styles.profileInput}
+              placeholder="Enter your display name"
+              placeholderTextColor="#AAA"
+              value={draftName}
+              onChangeText={setDraftName}
+              editable={!isSavingProfile}
+              maxLength={40}
+              autoCapitalize="words"
+              autoFocus
+            />
+
+            <Text style={styles.fieldLabel}>Email</Text>
+            <View style={styles.readOnlyField}>
+              <Text style={styles.readOnlyText}>
+                {profile.email || "No email linked"}
+              </Text>
+              <Ionicons
+                name="lock-closed-outline"
+                size={18}
+                color={palette.textSoft}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={closeManageProfile}
+                disabled={isSavingProfile}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSaveProfile}
+                disabled={isSavingProfile}
+              >
+                {isSavingProfile ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -506,5 +663,110 @@ const styles = StyleSheet.create({
     backgroundColor: "#F0F0F0",
     marginLeft: 70, // 让分割线对齐文字
     marginRight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  profileModalContent: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    paddingBottom: 36,
+  },
+  modalHandle: {
+    alignSelf: "center",
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#DDD",
+    marginBottom: 18,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#333",
+    textAlign: "center",
+  },
+  modalSubtitle: {
+    color: "#888",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  profileAvatarPreview: {
+    alignItems: "center",
+    marginVertical: 18,
+  },
+  fieldLabel: {
+    color: "#555",
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 8,
+    marginLeft: 4,
+    textTransform: "uppercase",
+  },
+  profileInput: {
+    backgroundColor: "#F5F6F8",
+    borderColor: "#EEE",
+    borderRadius: 14,
+    borderWidth: 1,
+    color: "#333",
+    fontSize: 16,
+    fontWeight: "700",
+    height: 54,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  readOnlyField: {
+    alignItems: "center",
+    backgroundColor: "#F5F6F8",
+    borderColor: "#EEE",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    height: 54,
+    justifyContent: "space-between",
+    marginBottom: 22,
+    paddingHorizontal: 16,
+  },
+  readOnlyText: {
+    color: "#888",
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    marginRight: 12,
+  },
+  modalActions: {
+    flexDirection: "row",
+  },
+  modalButton: {
+    alignItems: "center",
+    borderRadius: 14,
+    flex: 1,
+    height: 54,
+    justifyContent: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#F5F6F8",
+    marginRight: 10,
+  },
+  saveButton: {
+    backgroundColor: palette.primary,
+    marginLeft: 10,
+  },
+  cancelButtonText: {
+    color: "#888",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  saveButtonText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "900",
   },
 });
