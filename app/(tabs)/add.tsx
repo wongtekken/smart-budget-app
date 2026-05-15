@@ -20,9 +20,11 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, // 🚨 新增：用于显示 AI 解析时的 Loading 圈
+  Animated,
+  Easing,
   Modal,
   Platform,
   ScrollView,
@@ -61,6 +63,7 @@ type EntrySource = "manual" | "receipt" | "voice";
 
 const RECEIPT_MAX_EDGE = 1600;
 const RECEIPT_JPEG_QUALITY = 0.78;
+const VOICE_WAVE_BAR_HEIGHTS = [18, 34, 52, 28, 46, 64, 38, 56, 24];
 
 const InputField = ({ label, children }: InputFieldProps) => (
   <View style={styles.inputGroup}>
@@ -111,7 +114,14 @@ export default function AddTransactionScreen() {
   const [aiMode, setAiMode] = useState<"receipt" | "voice" | null>(null);
   const [entrySource, setEntrySource] = useState<EntrySource>("manual");
   const [isVoiceModalVisible, setVoiceModalVisible] = useState(false);
+  const [isVoiceRecordingPanelVisible, setVoiceRecordingPanelVisible] =
+    useState(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [voiceTranscript, setVoiceTranscript] = useState("");
+  const voicePulseAnim = useRef(new Animated.Value(0)).current;
+  const voiceWaveAnims = useRef(
+    VOICE_WAVE_BAR_HEIGHTS.map(() => new Animated.Value(0)),
+  ).current;
 
   // 双日历状态管理
   const [date, setDate] = useState(new Date());
@@ -126,6 +136,14 @@ export default function AddTransactionScreen() {
   const formatDate = (d: Date) => {
     const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
     return localDate.toISOString().split("T")[0];
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const remainingSeconds = (seconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${remainingSeconds}`;
   };
 
   const prepareReceiptImage = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -159,6 +177,68 @@ export default function AddTransactionScreen() {
       playsInSilentMode: true,
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!isVoiceRecordingPanelVisible) return;
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(voicePulseAnim, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(voicePulseAnim, {
+          toValue: 0,
+          duration: 850,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const waveLoop = Animated.loop(
+      Animated.stagger(
+        80,
+        voiceWaveAnims.map((anim, index) =>
+          Animated.sequence([
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 260 + index * 12,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(anim, {
+              toValue: 0,
+              duration: 280,
+              easing: Easing.in(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    pulseLoop.start();
+    waveLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+      waveLoop.stop();
+      voicePulseAnim.setValue(0);
+      voiceWaveAnims.forEach((anim) => anim.setValue(0));
+    };
+  }, [isVoiceRecordingPanelVisible, voicePulseAnim, voiceWaveAnims]);
+
+  useEffect(() => {
+    if (!recorderState.isRecording) return;
+
+    const timer = setInterval(() => {
+      setVoiceRecordingSeconds((seconds) => seconds + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [recorderState.isRecording]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -431,6 +511,8 @@ export default function AddTransactionScreen() {
         appAlert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
       } finally {
         setAiMode(null);
+        setVoiceRecordingPanelVisible(false);
+        setVoiceRecordingSeconds(0);
       }
       return;
     }
@@ -444,9 +526,27 @@ export default function AddTransactionScreen() {
 
     try {
       await audioRecorder.prepareToRecordAsync();
+      setVoiceRecordingSeconds(0);
+      setVoiceRecordingPanelVisible(true);
       audioRecorder.record();
     } catch (error) {
+      setVoiceRecordingPanelVisible(false);
       appAlert("Voice Error", "Could not start recording. Please try again.");
+    }
+  };
+
+  const handleCancelVoiceRecording = async () => {
+    if (aiMode === "voice") return;
+
+    try {
+      if (recorderState.isRecording) {
+        await audioRecorder.stop();
+      }
+    } catch (error) {
+      appAlert("Voice Error", "Could not cancel recording. Please try again.");
+    } finally {
+      setVoiceRecordingPanelVisible(false);
+      setVoiceRecordingSeconds(0);
     }
   };
 
@@ -576,6 +676,22 @@ export default function AddTransactionScreen() {
   // ==========================================
   // UI 渲染辅助组件
   // ==========================================
+
+  const voicePulseStyle = {
+    opacity: voicePulseAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.35, 0],
+    }),
+    transform: [
+      {
+        scale: voicePulseAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.9],
+        }),
+      },
+    ],
+  };
+  const isVoiceAnalyzing = aiMode === "voice" && !recorderState.isRecording;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -887,6 +1003,85 @@ export default function AddTransactionScreen() {
       </Modal>
 
       <Modal
+        visible={isVoiceRecordingPanelVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelVoiceRecording}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.recordingModalContent}>
+            <View style={styles.recordingIconWrap}>
+              {!isVoiceAnalyzing && (
+                <Animated.View
+                  style={[styles.recordingPulse, voicePulseStyle]}
+                />
+              )}
+              <View style={styles.recordingIcon}>
+                {isVoiceAnalyzing ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <MaterialIcons name="keyboard-voice" size={38} color="#FFF" />
+                )}
+              </View>
+            </View>
+
+            <Text style={styles.recordingTitle}>
+              {isVoiceAnalyzing ? "Analyzing voice..." : "Recording..."}
+            </Text>
+            <Text style={styles.recordingTimer}>
+              {formatRecordingTime(voiceRecordingSeconds)}
+            </Text>
+
+            <View style={styles.voiceWave}>
+              {VOICE_WAVE_BAR_HEIGHTS.map((height, index) => (
+                <Animated.View
+                  key={`${height}-${index}`}
+                  style={[
+                    styles.voiceWaveBar,
+                    {
+                      height,
+                      transform: [
+                        {
+                          scaleY: voiceWaveAnims[index].interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.45, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+
+            <View style={styles.recordingActions}>
+              <TouchableOpacity
+                style={[styles.recordingButton, styles.recordingCancelButton]}
+                onPress={handleCancelVoiceRecording}
+                disabled={isVoiceAnalyzing}
+              >
+                <Text style={styles.recordingCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.recordingButton, styles.recordingStopButton]}
+                onPress={handleVoiceRecordingPress}
+                disabled={isVoiceAnalyzing}
+              >
+                {isVoiceAnalyzing ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <MaterialIcons name="stop" size={22} color="#FFF" />
+                    <Text style={styles.recordingStopText}>Stop</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isVoiceModalVisible}
         transparent={true}
         animationType="slide"
@@ -1072,6 +1267,94 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
     padding: 24,
     paddingBottom: 34,
+  },
+  recordingModalContent: {
+    backgroundColor: palette.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: 24,
+    paddingBottom: 34,
+    alignItems: "center",
+  },
+  recordingIconWrap: {
+    alignItems: "center",
+    height: 112,
+    justifyContent: "center",
+    marginBottom: 6,
+    width: 112,
+  },
+  recordingPulse: {
+    backgroundColor: palette.danger,
+    borderRadius: 56,
+    height: 86,
+    position: "absolute",
+    width: 86,
+  },
+  recordingIcon: {
+    alignItems: "center",
+    backgroundColor: palette.danger,
+    borderRadius: 38,
+    height: 76,
+    justifyContent: "center",
+    width: 76,
+  },
+  recordingTitle: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  recordingTimer: {
+    color: palette.danger,
+    fontSize: 34,
+    fontWeight: "900",
+    marginTop: 6,
+  },
+  voiceWave: {
+    alignItems: "center",
+    flexDirection: "row",
+    height: 74,
+    justifyContent: "center",
+    marginTop: 16,
+    width: "100%",
+  },
+  voiceWaveBar: {
+    backgroundColor: palette.primary,
+    borderRadius: 4,
+    marginHorizontal: 4,
+    width: 8,
+  },
+  recordingActions: {
+    flexDirection: "row",
+    marginTop: 20,
+    width: "100%",
+  },
+  recordingButton: {
+    alignItems: "center",
+    borderRadius: radius.lg,
+    flex: 1,
+    flexDirection: "row",
+    height: 54,
+    justifyContent: "center",
+  },
+  recordingCancelButton: {
+    backgroundColor: palette.surfaceMuted,
+    marginRight: 10,
+  },
+  recordingStopButton: {
+    backgroundColor: palette.danger,
+    marginLeft: 10,
+  },
+  recordingCancelText: {
+    color: palette.textMuted,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  recordingStopText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 6,
   },
   voiceModalTitle: {
     color: palette.text,
