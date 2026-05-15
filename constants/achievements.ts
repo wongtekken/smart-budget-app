@@ -8,7 +8,9 @@ export type AchievementCategoryData = {
   isGoal?: boolean;
 };
 
-export type AchievementTemplateData = Record<string, unknown>;
+export type AchievementTemplateData = {
+  isDefault?: boolean;
+};
 
 export type AchievementTransactionData = {
   aiMode?: string;
@@ -157,7 +159,7 @@ const getMetrics = (
       hasSource(transaction, "voice"),
     ),
     maxTrackingStreak: getMaxTrackingStreak(transactionDates),
-    templateCount: templates.length,
+    templateCount: templates.filter((template) => !template.isDefault).length,
     transactionCount: transactions.length,
     ...calendarMonthProgress,
   };

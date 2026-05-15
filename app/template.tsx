@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -21,9 +21,15 @@ import {
   doc,
   onSnapshot,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
+import {
+  buildDefaultBudgetTemplateDoc,
+  DEFAULT_BUDGET_TEMPLATES,
+  getDefaultBudgetTemplateDocId,
+} from "../constants/defaultBudgetTemplates";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -38,10 +44,13 @@ type TemplateType = {
   id: string;
   name: string;
   allocations: AllocationType[];
+  isDefault?: boolean;
+  templateKey?: string;
 };
 
 export default function TemplateScreen() {
   const router = useRouter();
+  const defaultSeedInFlightRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [templates, setTemplates] = useState<TemplateType[]>([]);
@@ -72,11 +81,52 @@ export default function TemplateScreen() {
       collection(db, "templates"),
       where("userId", "==", user.uid),
     );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const existingDefaultKeys = new Set(
+        snapshot.docs
+          .map((templateDoc) => templateDoc.data())
+          .filter((template) => template.isDefault)
+          .map((template) => String(template.templateKey || "")),
+      );
+      const missingDefaults = DEFAULT_BUDGET_TEMPLATES.filter(
+        (template) => !existingDefaultKeys.has(template.key),
+      );
+
+      if (missingDefaults.length > 0 && !defaultSeedInFlightRef.current) {
+        defaultSeedInFlightRef.current = true;
+        try {
+          await Promise.all(
+            missingDefaults.map((template) =>
+              setDoc(
+                doc(
+                  db,
+                  "templates",
+                  getDefaultBudgetTemplateDocId(user.uid, template.key),
+                ),
+                {
+                  ...buildDefaultBudgetTemplateDoc(user.uid, template),
+                  createdAt: new Date(),
+                },
+              ),
+            ),
+          );
+        } catch (error) {
+          console.error("Error seeding default budget templates:", error);
+        } finally {
+          defaultSeedInFlightRef.current = false;
+        }
+      }
+
       const data: TemplateType[] = [];
       snapshot.forEach((doc) =>
         data.push({ id: doc.id, ...doc.data() } as TemplateType),
       );
+      data.sort((a, b) => {
+        if (Boolean(a.isDefault) === Boolean(b.isDefault)) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.isDefault ? -1 : 1;
+      });
       setTemplates(data);
     });
     return () => unsubscribe();
@@ -166,7 +216,7 @@ export default function TemplateScreen() {
         });
       }
       closeModal();
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to save template.");
     }
   };
@@ -179,6 +229,14 @@ export default function TemplateScreen() {
   };
 
   const openEditModal = (template: TemplateType) => {
+    if (template.isDefault) {
+      Alert.alert(
+        "System Template",
+        "Default templates cannot be edited or deleted.",
+      );
+      return;
+    }
+
     setEditingTemplateId(template.id);
     setNewTemplateName(template.name);
     setDraftAllocations([...template.allocations]);
@@ -194,11 +252,28 @@ export default function TemplateScreen() {
 
   // 🚨 长按唤出操作菜单
   const handleLongPress = (template: TemplateType) => {
+    if (template.isDefault) {
+      Alert.alert(
+        "System Template",
+        "Default templates cannot be edited or deleted.",
+      );
+      return;
+    }
+
     setSelectedTemplate(template);
     setActionMenuVisible(true);
   };
 
   const handleDeleteTemplate = (id: string, name: string) => {
+    const template = templates.find((item) => item.id === id);
+    if (template?.isDefault) {
+      Alert.alert(
+        "System Template",
+        "Default templates cannot be edited or deleted.",
+      );
+      return;
+    }
+
     Alert.alert(
       "Delete Template",
       `Are you sure you want to delete "${name}"?`,
@@ -273,7 +348,16 @@ export default function TemplateScreen() {
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{template.name}</Text>
-                {/* 移除了原本的图标，保持界面整洁 */}
+                {template.isDefault && (
+                  <View style={styles.defaultBadge}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={13}
+                      color={palette.primary}
+                    />
+                    <Text style={styles.defaultBadgeText}>Default</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.divider} />
               {template.allocations.map((item, index) => (
@@ -605,7 +689,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 15,
   },
-  cardTitle: { fontSize: 22, fontWeight: "900", color: palette.text },
+  cardTitle: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 22,
+    fontWeight: "900",
+    marginRight: 10,
+  },
+  defaultBadge: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderColor: palette.accent,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  defaultBadgeText: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "900",
+    marginLeft: 4,
+  },
   divider: { height: 1, backgroundColor: palette.border, marginBottom: 15 },
   allocationRow: { marginBottom: 15 },
   textRow: {

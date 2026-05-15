@@ -17,6 +17,11 @@ import {
   DEFAULT_CATEGORIES,
   getDefaultCategoryDocId,
 } from "../constants/defaultCategories";
+import {
+  buildDefaultBudgetTemplateDoc,
+  DEFAULT_BUDGET_TEMPLATES,
+  getDefaultBudgetTemplateDocId,
+} from "../constants/defaultBudgetTemplates";
 import { doc, setDoc } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
 import { auth, db } from "../firebaseConfig"; // 确保你导出了 db
 
@@ -96,7 +101,7 @@ export default function RegisterScreen() {
       // ==========================================
       // 🚨 2. 账号创建成功的瞬间，立刻把默认分类塞进去！
       // ==========================================
-      const promises = DEFAULT_CATEGORIES.map((cat) =>
+      const categoryPromises = DEFAULT_CATEGORIES.map((cat) =>
         setDoc(
           doc(
             db,
@@ -113,12 +118,27 @@ export default function RegisterScreen() {
       );
 
       // 使用 Promise.all 并发执行，毫秒级瞬间完成这 7 条写入
-      await Promise.all(promises);
+      const templatePromises = DEFAULT_BUDGET_TEMPLATES.map((template) =>
+        setDoc(
+          doc(
+            db,
+            "templates",
+            getDefaultBudgetTemplateDocId(user.uid, template.key),
+          ),
+          {
+            ...buildDefaultBudgetTemplateDoc(user.uid, template),
+            createdAt: new Date(),
+          },
+        ),
+      );
+
+      await Promise.all([...categoryPromises, ...templatePromises]);
 
       // 3. 成功后弹窗并跳转主页
       showDialog({
         title: "Success!",
-        message: "Account created! Default categories have been set up for you.",
+        message:
+          "Account created! Default categories and budget template have been set up for you.",
         type: "success",
       });
       router.replace("/(tabs)");
