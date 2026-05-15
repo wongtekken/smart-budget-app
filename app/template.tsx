@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Modal,
@@ -21,15 +21,9 @@ import {
   doc,
   onSnapshot,
   query,
-  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
-import {
-  buildDefaultBudgetTemplateDoc,
-  DEFAULT_BUDGET_TEMPLATES,
-  getDefaultBudgetTemplateDocId,
-} from "../constants/defaultBudgetTemplates";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -50,7 +44,6 @@ type TemplateType = {
 
 export default function TemplateScreen() {
   const router = useRouter();
-  const defaultSeedInFlightRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [templates, setTemplates] = useState<TemplateType[]>([]);
@@ -81,42 +74,7 @@ export default function TemplateScreen() {
       collection(db, "templates"),
       where("userId", "==", user.uid),
     );
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const existingDefaultKeys = new Set(
-        snapshot.docs
-          .map((templateDoc) => templateDoc.data())
-          .filter((template) => template.isDefault)
-          .map((template) => String(template.templateKey || "")),
-      );
-      const missingDefaults = DEFAULT_BUDGET_TEMPLATES.filter(
-        (template) => !existingDefaultKeys.has(template.key),
-      );
-
-      if (missingDefaults.length > 0 && !defaultSeedInFlightRef.current) {
-        defaultSeedInFlightRef.current = true;
-        try {
-          await Promise.all(
-            missingDefaults.map((template) =>
-              setDoc(
-                doc(
-                  db,
-                  "templates",
-                  getDefaultBudgetTemplateDocId(user.uid, template.key),
-                ),
-                {
-                  ...buildDefaultBudgetTemplateDoc(user.uid, template),
-                  createdAt: new Date(),
-                },
-              ),
-            ),
-          );
-        } catch (error) {
-          console.error("Error seeding default budget templates:", error);
-        } finally {
-          defaultSeedInFlightRef.current = false;
-        }
-      }
-
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const data: TemplateType[] = [];
       snapshot.forEach((doc) =>
         data.push({ id: doc.id, ...doc.data() } as TemplateType),

@@ -28,10 +28,6 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { useAppDialog } from "../components/app-dialog";
-import {
-  DEFAULT_CATEGORIES,
-  getDefaultCategoryDocId,
-} from "../constants/defaultCategories";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -57,7 +53,6 @@ type CategoryType = {
 export default function ManageCategoriesScreen() {
   const router = useRouter();
   const { showConfirm, showDialog } = useAppDialog();
-  const defaultSeedInFlightRef = useRef(false);
   const duplicateCleanupInFlightRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<"Expense" | "Income">("Expense");
@@ -123,48 +118,6 @@ export default function ManageCategoriesScreen() {
           console.error("Error cleaning duplicate default categories:", error);
         } finally {
           duplicateCleanupInFlightRef.current = false;
-        }
-      }
-
-      const existingDefaultKeys = new Set(
-        snapshot.docs
-          .filter((categoryDoc) => !duplicateDefaultIds.has(categoryDoc.id))
-          .map((categoryDoc) => {
-            const data = categoryDoc.data();
-            return `${data.type}:${String(data.name).trim().toLowerCase()}`;
-          }),
-      );
-      const missingDefaults = DEFAULT_CATEGORIES.filter(
-        (category) =>
-          !existingDefaultKeys.has(
-            `${category.type}:${category.name.toLowerCase()}`,
-          ),
-      );
-
-      if (missingDefaults.length > 0 && !defaultSeedInFlightRef.current) {
-        defaultSeedInFlightRef.current = true;
-        try {
-          const batch = writeBatch(db);
-          missingDefaults.forEach((cat) => {
-            batch.set(
-              doc(
-                db,
-                "categories",
-                getDefaultCategoryDocId(user.uid, cat.type, cat.name),
-              ),
-              {
-                userId: user.uid,
-                parentId: null,
-                createdAt: new Date(),
-                ...cat,
-              },
-            );
-          });
-          await batch.commit();
-        } catch (error) {
-          console.error("Error seeding default categories:", error);
-        } finally {
-          defaultSeedInFlightRef.current = false;
         }
       }
 
