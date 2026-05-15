@@ -1,10 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import React from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { palette, radius, shadow } from "../../constants/ui";
+import { auth } from "../../firebaseConfig";
+import { processDueRecurringTransactions } from "../../services/recurringService";
 
 export default function TabLayout() {
+  const processingUserRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user || processingUserRef.current === user.uid) return;
+
+      processingUserRef.current = user.uid;
+      processDueRecurringTransactions(user.uid).catch((error) => {
+        console.error("Recurring transaction processing failed:", error);
+        processingUserRef.current = null;
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{

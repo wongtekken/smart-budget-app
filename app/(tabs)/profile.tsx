@@ -456,7 +456,7 @@ export default function ProfileScreen() {
                 ? `${stats.activeReminders} Active`
                 : "Off"
             }
-            onPress={() => {}}
+            onPress={() => router.push("/recurring")}
           />
         </View>
 

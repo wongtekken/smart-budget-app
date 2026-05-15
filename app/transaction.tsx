@@ -373,6 +373,7 @@ export default function TransactionsScreen() {
                       returnedNote: selectedTx.note || "",
                       returnedDate: selectedTx.date || "",
                       returnedRecurring: selectedTx.recurring || "Never",
+                      recurringId: selectedTx.recurringId || "",
                     },
                   });
                 }

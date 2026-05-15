@@ -15,8 +15,10 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   onSnapshot,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -38,6 +40,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppDialog } from "../../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
+import { getNextRecurringDate } from "../../services/recurringService";
 
 // 🚨 新增：引入你写好的 AI 解析服务
 import {
@@ -101,11 +104,13 @@ export default function AddTransactionScreen() {
     returnedDate,
     returnedRecurring,
     editId: paramEditId,
+    recurringId: paramRecurringId,
   } = useLocalSearchParams();
 
   // 基础状态
   const [amount, setAmount] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
+  const [editRecurringId, setEditRecurringId] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
   const [selectedSegment, setSelectedSegment] = useState("Expense");
@@ -283,6 +288,7 @@ export default function AddTransactionScreen() {
     if (returnedNote) setNote(returnedNote as string);
     if (returnedRecurring) setRecurring(returnedRecurring as string);
     if (paramEditId) setEditId(paramEditId as string);
+    if (paramRecurringId) setEditRecurringId(paramRecurringId as string);
 
     if (
       returnedDate &&
@@ -302,7 +308,22 @@ export default function AddTransactionScreen() {
     returnedDate,
     returnedRecurring,
     paramEditId,
+    paramRecurringId,
   ]);
+
+  useEffect(() => {
+    if (!editRecurringId) return;
+
+    getDoc(doc(db, "recurring_transactions", editRecurringId))
+      .then((snapshot) => {
+        if (!snapshot.exists()) return;
+        const nextDate = snapshot.data().nextExecuteDate;
+        if (typeof nextDate === "string" && nextDate.trim()) {
+          setNextRecurringDate(new Date(nextDate));
+        }
+      })
+      .catch(() => undefined);
+  }, [editRecurringId]);
 
   // ==========================================
   // 🚨 新增：AI 智能解析逻辑
@@ -605,6 +626,13 @@ export default function AddTransactionScreen() {
             };
 
       if (editId) {
+        const recurringRef =
+          editRecurringId || recurring !== "Never"
+            ? editRecurringId
+              ? doc(db, "recurring_transactions", editRecurringId)
+              : doc(collection(db, "recurring_transactions"))
+            : null;
+
         await updateDoc(doc(db, "transactions", editId), {
           amount: numericAmount,
           category: category,
@@ -612,12 +640,45 @@ export default function AddTransactionScreen() {
           date: formatDate(date),
           type: selectedSegment,
           recurring: recurring,
+          recurringId: recurring !== "Never" ? recurringRef?.id || null : null,
           updatedAt: now,
           ...sourceFields,
         });
+
+        if (recurringRef && recurring !== "Never") {
+          await setDoc(
+            recurringRef,
+            {
+              userId: user.uid,
+              amount: numericAmount,
+              category: category,
+              note: note,
+              type: selectedSegment,
+              frequency: recurring,
+              firstTransactionId: editId,
+              startDate: formatDate(date),
+              nextExecuteDate: formatDate(nextRecurringDate),
+              isActive: true,
+              updatedAt: now,
+            },
+            { merge: true },
+          );
+        } else if (recurringRef && recurring === "Never") {
+          await updateDoc(recurringRef, {
+            isActive: false,
+            updatedAt: now,
+          });
+        }
+
         appAlert("Success!", "Transaction updated successfully.");
       } else {
-        await addDoc(collection(db, "transactions"), {
+        const transactionRef = doc(collection(db, "transactions"));
+        const recurringRef =
+          recurring !== "Never"
+            ? doc(collection(db, "recurring_transactions"))
+            : null;
+
+        await setDoc(transactionRef, {
           userId: user.uid,
           amount: numericAmount,
           category: category,
@@ -625,19 +686,21 @@ export default function AddTransactionScreen() {
           date: formatDate(date),
           type: selectedSegment,
           recurring: recurring,
+          recurringId: recurringRef?.id || null,
           createdAt: now,
           entrySource,
           source: entrySource,
         });
 
-        if (recurring !== "Never") {
-          await addDoc(collection(db, "recurring_transactions"), {
+        if (recurringRef) {
+          await setDoc(recurringRef, {
             userId: user.uid,
             amount: numericAmount,
             category: category,
             note: note,
             type: selectedSegment,
             frequency: recurring,
+            firstTransactionId: transactionRef.id,
             startDate: formatDate(date),
             nextExecuteDate: formatDate(nextRecurringDate),
             isActive: true,
@@ -654,6 +717,7 @@ export default function AddTransactionScreen() {
       setNextRecurringDate(new Date());
       setRecurring("Never");
       setEditId(null);
+      setEditRecurringId(null);
       setEntrySource("manual");
 
       router.setParams({
@@ -664,6 +728,7 @@ export default function AddTransactionScreen() {
         returnedDate: "",
         returnedRecurring: "",
         editId: "",
+        recurringId: "",
       });
 
       router.push("/(tabs)");
@@ -981,6 +1046,11 @@ export default function AddTransactionScreen() {
                 }}
                 onPress={() => {
                   setRecurring(option);
+                  if (option !== "Never") {
+                    setNextRecurringDate(
+                      new Date(getNextRecurringDate(formatDate(date), option)),
+                    );
+                  }
                   setRecurringModalVisible(false);
                 }}
               >
