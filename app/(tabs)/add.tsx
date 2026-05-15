@@ -325,23 +325,7 @@ export default function AddTransactionScreen() {
     );
   };
 
-  const handleReceiptScan = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      appAlert("Camera Permission", "Please allow camera access to scan receipts.");
-      return;
-    }
-
-    const image = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: false,
-      quality: 1,
-    });
-
-    if (image.canceled) return;
-
-    const asset = image.assets[0];
+  const scanReceiptAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     if (!asset?.uri) {
       appAlert("Receipt Error", "Could not read the receipt image. Please try again.");
       return;
@@ -381,6 +365,45 @@ export default function AddTransactionScreen() {
     } finally {
       setAiMode(null);
     }
+  };
+
+  const handleReceiptScan = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      appAlert("Camera Permission", "Please allow camera access to scan receipts.");
+      return;
+    }
+
+    const image = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: false,
+      quality: 1,
+    });
+
+    if (image.canceled) return;
+
+    await scanReceiptAsset(image.assets[0]);
+  };
+
+  const handleReceiptAlbumPick = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      appAlert("Photo Permission", "Please allow photo access to choose a receipt.");
+      return;
+    }
+
+    const image = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: false,
+      quality: 1,
+      allowsMultipleSelection: false,
+    });
+
+    if (image.canceled) return;
+
+    await scanReceiptAsset(image.assets[0]);
   };
 
   const handleVoiceRecordingPress = async () => {
@@ -750,12 +773,22 @@ export default function AddTransactionScreen() {
             style={styles.fabSmall}
             onPress={handleReceiptScan}
             disabled={aiMode !== null}
+            accessibilityLabel="Scan receipt with camera"
           >
             {aiMode === "receipt" ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <FontAwesome name="camera" size={24} color="#FFF" />
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.fabSmall}
+            onPress={handleReceiptAlbumPick}
+            disabled={aiMode !== null}
+            accessibilityLabel="Choose receipt from photo album"
+          >
+            <FontAwesome name="image" size={24} color="#FFF" />
           </TouchableOpacity>
 
           {/* 🚨 修改处：绑定 AI 逻辑，并在加载时显示圈圈 */}
@@ -1000,12 +1033,12 @@ const styles = StyleSheet.create({
   floatingButtons: { flexDirection: "row" },
   fabSmall: {
     backgroundColor: palette.primary,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 15,
+    marginRight: 10,
     shadowColor: palette.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,

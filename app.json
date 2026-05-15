@@ -40,7 +40,14 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Smart Budget to use your camera to scan receipts.",
+          "photosPermission": "Allow Smart Budget to choose receipt photos from your album."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
