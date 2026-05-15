@@ -27,9 +27,41 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
+const getTransactionDateTime = (tx: any) =>
+  new Date(tx.date || "1970-01-01").getTime();
+
+const getCreatedTime = (tx: any) =>
+  tx.createdAt?.toMillis?.() ?? (new Date(tx.createdAt || 0).getTime() || 0);
+
+const sortTransactionsByDate = (a: any, b: any) => {
+  const dateDiff = getTransactionDateTime(b) - getTransactionDateTime(a);
+  if (dateDiff !== 0) return dateDiff;
+  return getCreatedTime(b) - getCreatedTime(a);
+};
+
+const getLocalMonthStr = (date = new Date()) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 7);
+};
+
+const getMonthLabel = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(year, monthIndex - 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+};
+
+const shiftMonth = (month: string, offset: number) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex - 1 + offset, 1);
+  return getLocalMonthStr(date);
+};
+
 export default function TransactionsScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(getLocalMonthStr());
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,9 +87,7 @@ export default function TransactionsScreen() {
         liveData.push({ id: doc.id, ...doc.data() });
       });
 
-      liveData.sort(
-        (a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis(),
-      );
+      liveData.sort(sortTransactionsByDate);
 
       setTransactions(liveData);
       setLoading(false);
@@ -66,7 +96,11 @@ export default function TransactionsScreen() {
     return () => unsubscribe();
   }, []);
 
-  const groupedTransactions = transactions
+  const monthlyTransactions = transactions.filter((item) =>
+    String(item.date || "").startsWith(selectedMonth),
+  );
+
+  const groupedTransactions = monthlyTransactions
     .filter((item) =>
       (item.category || item.note || "")
         .toLowerCase()
@@ -81,10 +115,16 @@ export default function TransactionsScreen() {
       return groups;
     }, {});
 
-  const groupedArray = Object.keys(groupedTransactions).map((date) => ({
-    date,
-    data: groupedTransactions[date],
-  }));
+  const groupedArray = Object.keys(groupedTransactions)
+    .sort((a, b) => {
+      if (a === "Unknown Date") return 1;
+      if (b === "Unknown Date") return -1;
+      return new Date(b).getTime() - new Date(a).getTime();
+    })
+    .map((date) => ({
+      date,
+      data: groupedTransactions[date].sort(sortTransactionsByDate),
+    }));
 
   // 单击：打开详情
   const openDetails = (tx: any) => {
@@ -167,6 +207,42 @@ export default function TransactionsScreen() {
       </View>
 
       <View style={styles.content}>
+        <View style={styles.monthNavigator}>
+          <TouchableOpacity
+            style={styles.monthButton}
+            onPress={() => setSelectedMonth((month) => shiftMonth(month, -1))}
+          >
+            <Ionicons name="chevron-back" size={22} color={palette.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.monthLabelButton}
+            onPress={() => setSelectedMonth(getLocalMonthStr())}
+          >
+            <Text style={styles.monthLabel}>{getMonthLabel(selectedMonth)}</Text>
+            <Text style={styles.monthHint}>Tap to return to this month</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.monthButton,
+              selectedMonth >= getLocalMonthStr() && styles.monthButtonDisabled,
+            ]}
+            onPress={() => setSelectedMonth((month) => shiftMonth(month, 1))}
+            disabled={selectedMonth >= getLocalMonthStr()}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color={
+                selectedMonth >= getLocalMonthStr()
+                  ? palette.textSoft
+                  : palette.primary
+              }
+            />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Ionicons
@@ -248,7 +324,9 @@ export default function TransactionsScreen() {
             ))}
 
             {groupedArray.length === 0 && (
-              <Text style={styles.noResultText}>No transactions found</Text>
+              <Text style={styles.noResultText}>
+                No transactions found for {getMonthLabel(selectedMonth)}
+              </Text>
             )}
           </ScrollView>
         )}
@@ -414,6 +492,46 @@ const styles = StyleSheet.create({
   headerIcon: { width: 40, alignItems: "flex-start" },
   headerTitle: { fontSize: 24, fontWeight: "900", color: "#000" },
   content: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
+  monthNavigator: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 15,
+    padding: 8,
+    ...shadow.subtle,
+  },
+  monthButton: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderRadius: 14,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  monthButtonDisabled: {
+    backgroundColor: palette.surfaceMuted,
+  },
+  monthLabelButton: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  monthLabel: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  monthHint: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
   searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   searchContainer: {
     flex: 1,
