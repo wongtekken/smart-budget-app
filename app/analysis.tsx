@@ -39,6 +39,11 @@ const getMonthStr = (date: Date) => {
   return date.toISOString().slice(0, 7);
 };
 
+const formatCompactCurrency = (value: number) => {
+  if (Math.abs(value) >= 1000) return `RM ${(value / 1000).toFixed(1)}k`;
+  return `RM ${value.toFixed(0)}`;
+};
+
 export default function AnalysisScreen() {
   const router = useRouter();
 
@@ -95,6 +100,7 @@ export default function AnalysisScreen() {
         value: groupedData[key],
         color: CHART_COLORS[index % CHART_COLORS.length],
         label: key,
+        amount: groupedData[key],
         percentage:
           totalAmount > 0
             ? ((groupedData[key] / totalAmount) * 100).toFixed(1)
@@ -160,7 +166,9 @@ export default function AnalysisScreen() {
         frontColor: palette.success,
         topLabelComponent: () => (
           // 🚨 把文字改成深色，配合白色底板
-          <Text style={[styles.barLabel, { color: "#333" }]}>{totalInc}</Text>
+          <Text style={[styles.barLabel, { color: palette.text }]}>
+            {formatCompactCurrency(totalInc)}
+          </Text>
         ),
       },
       {
@@ -168,7 +176,9 @@ export default function AnalysisScreen() {
         label: "Expense",
         frontColor: palette.danger,
         topLabelComponent: () => (
-          <Text style={[styles.barLabel, { color: "#333" }]}>{totalExp}</Text>
+          <Text style={[styles.barLabel, { color: palette.text }]}>
+            {formatCompactCurrency(totalExp)}
+          </Text>
         ),
       },
     ];
@@ -275,31 +285,58 @@ export default function AnalysisScreen() {
                   <PieChart
                     donut
                     data={chartData}
-                    radius={80}
-                    innerRadius={45}
-                    innerCircleColor={palette.accent}
+                    radius={88}
+                    innerRadius={58}
+                    innerCircleColor={palette.surface}
                     centerLabelComponent={() => {
-                      return <View />;
+                      return (
+                        <View style={styles.donutCenter}>
+                          <Text style={styles.donutTotal}>
+                            {formatCompactCurrency(totalAmount)}
+                          </Text>
+                          <Text style={styles.donutCaption}>
+                            Total {activeTab}
+                          </Text>
+                        </View>
+                      );
                     }}
                   />
                 </View>
 
-                <View style={styles.legendContainer}>
+                <View style={styles.categoryList}>
                   {chartData.map((item, index) => (
-                    <View key={index} style={styles.legendItem}>
-                      <View
-                        style={[
-                          styles.legendDot,
-                          { backgroundColor: item.color },
-                        ]}
-                      />
-                      <View>
-                        <Text style={styles.legendLabel} numberOfLines={1}>
-                          {item.label}
-                        </Text>
-                        <Text style={styles.legendPercentage}>
-                          {item.percentage}%
-                        </Text>
+                    <View key={index} style={styles.categoryBreakdownItem}>
+                      <View style={styles.categoryBreakdownTop}>
+                        <View style={styles.categoryBreakdownLeft}>
+                          <View
+                            style={[
+                              styles.legendDot,
+                              { backgroundColor: item.color },
+                            ]}
+                          />
+                          <Text style={styles.legendLabel} numberOfLines={1}>
+                            {item.label}
+                          </Text>
+                        </View>
+                        <View style={styles.categoryBreakdownRight}>
+                          <Text style={styles.legendAmount}>
+                            {formatCompactCurrency(item.amount)}
+                          </Text>
+                          <Text style={styles.legendPercentage}>
+                            {item.percentage}%
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.categoryProgressTrack}>
+                        <View
+                          style={[
+                            styles.categoryProgressFill,
+                            {
+                              backgroundColor: item.color,
+                              width: `${Math.min(Number(item.percentage), 100)}%`,
+                            },
+                          ]}
+                        />
                       </View>
                     </View>
                   ))}
@@ -339,7 +376,7 @@ export default function AnalysisScreen() {
                 <Ionicons
                   name={netCashFlow >= 0 ? "trending-up" : "trending-down"}
                   size={16}
-                  color="#FFF"
+                  color={palette.primary}
                   style={{ marginRight: 5 }}
                 />
                 <Text style={styles.savingsRateText}>
@@ -350,36 +387,39 @@ export default function AnalysisScreen() {
 
               {/* 3. 红绿双柱对抗图 (BarChart) */}
               <View style={styles.barChartWrapper}>
+                <Text style={styles.chartCaption}>
+                  Income vs Expense - {formatCompactCurrency(totalInc)} /{" "}
+                  {formatCompactCurrency(totalExp)}
+                </Text>
                 <BarChart
                   data={barData}
-                  barWidth={50}
-                  spacing={50}
+                  barWidth={44}
+                  spacing={46}
                   roundedTop
                   roundedBottom
                   // 🚨 开启网格线
-                  hideRules={false}
+                  hideRules
                   rulesType="solid"
-                  rulesColor="rgba(0,0,0,0.05)"
+                  rulesColor="transparent"
                   // 🚨 开启 Y 轴和 X 轴
-                  yAxisThickness={1}
-                  xAxisThickness={1}
-                  yAxisColor="rgba(0,0,0,0.1)"
-                  xAxisColor="rgba(0,0,0,0.1)"
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  yAxisColor="transparent"
+                  xAxisColor="transparent"
                   // 🚨 显示 Y 轴数字，并设置颜色
                   yAxisTextStyle={{
-                    color: "#888",
+                    color: "transparent",
                     fontSize: 10,
-                    fontWeight: "bold",
                   }}
                   xAxisLabelTextStyle={{
-                    color: "#555",
-                    fontWeight: "bold",
+                    color: palette.textMuted,
+                    fontWeight: "800",
                     marginTop: 5,
                   }}
                   noOfSections={4}
                   maxValue={maxValue * 1.2}
                   backgroundColor="transparent"
-                  initialSpacing={40}
+                  initialSpacing={28}
                   // 这个很重要，防止标签被切掉
                   showFractionalValues={false}
                 />
@@ -513,11 +553,13 @@ const styles = StyleSheet.create({
 
   // 大黄卡片
   chartCard: {
-    backgroundColor: palette.accent,
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
     borderRadius: radius.lg,
+    borderWidth: 1,
     padding: 20,
     minHeight: 280,
-    ...shadow.card,
+    ...shadow.subtle,
   },
   cardHeader: {
     flexDirection: "row",
@@ -533,7 +575,7 @@ const styles = StyleSheet.create({
   monthSelector: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: palette.surfaceMuted,
     borderRadius: 15,
     paddingHorizontal: 5,
     paddingVertical: 2,
@@ -545,28 +587,81 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   chartContent: {
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   chartWrapper: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 4,
-    flex: 1.2,
     alignItems: "center",
+    marginBottom: 22,
   },
-  legendContainer: { flex: 1, justifyContent: "center", paddingLeft: 10 },
-  legendItem: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  legendDot: { width: 14, height: 14, borderRadius: 7, marginRight: 10 },
-  legendLabel: { fontSize: 15, fontWeight: "bold", color: palette.text },
+  donutCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 110,
+  },
+  donutTotal: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  donutCaption: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  categoryList: {
+    width: "100%",
+  },
+  categoryBreakdownItem: {
+    marginBottom: 14,
+  },
+  categoryBreakdownTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 7,
+  },
+  categoryBreakdownLeft: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: 10,
+  },
+  categoryBreakdownRight: {
+    alignItems: "flex-end",
+  },
+  legendDot: { width: 12, height: 12, borderRadius: 6, marginRight: 10 },
+  legendLabel: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  legendAmount: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
   legendPercentage: {
     fontSize: 12,
     color: palette.textMuted,
-    marginTop: 2,
-    fontWeight: "bold",
+    marginTop: 1,
+    fontWeight: "800",
+  },
+  categoryProgressTrack: {
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: radius.pill,
+    height: 7,
+    overflow: "hidden",
+    width: "100%",
+  },
+  categoryProgressFill: {
+    borderRadius: radius.pill,
+    height: "100%",
   },
   emptyState: {
     alignItems: "center",
@@ -589,7 +684,9 @@ const styles = StyleSheet.create({
   insightCard: {
     flex: 1,
     backgroundColor: palette.surface,
+    borderColor: palette.border,
     borderRadius: radius.lg,
+    borderWidth: 1,
     padding: spacing.lg,
     marginHorizontal: 5,
     ...shadow.subtle,
@@ -622,7 +719,9 @@ const styles = StyleSheet.create({
   },
   topTxCard: {
     backgroundColor: palette.surface,
+    borderColor: palette.border,
     borderRadius: radius.lg,
+    borderWidth: 1,
     paddingHorizontal: 20,
     ...shadow.subtle,
   },
@@ -652,53 +751,56 @@ const styles = StyleSheet.create({
   },
   overviewContainer: {
     alignItems: "center",
-    paddingTop: 10,
+    paddingTop: 0,
   },
   netCashFlowLabel: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 13,
+    fontWeight: "900",
     color: palette.textMuted,
-    marginBottom: 5,
+    marginBottom: 4,
+    textTransform: "uppercase",
   },
   netCashFlowValue: {
-    fontSize: 42,
+    fontSize: 34,
     fontWeight: "900",
-    marginBottom: 15,
-    textShadowColor: "rgba(0,0,0,0.1)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    marginBottom: 10,
   },
   savingsRatePill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: palette.primary,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 30,
+    backgroundColor: palette.primarySoft,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    marginBottom: 18,
   },
   savingsRateText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 14,
+    color: palette.primary,
+    fontWeight: "900",
+    fontSize: 13,
   },
   barChartWrapper: {
-    height: 250, // 稍微拉高一点以容纳网格
+    height: 220,
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.95)", // 🚨 加上白底 (稍微带一点点透明，显得有质感)
-    borderRadius: 20, // 🚨 圆角
-    paddingVertical: 20,
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingVertical: 16,
     paddingRight: 10, // 给右边留点空隙
     paddingLeft: 0, // 左边数字会占空间
-    marginTop: 10,
+    marginTop: 6,
     // 🚨 加上漂亮的阴影
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+  },
+  chartCaption: {
+    alignSelf: "flex-start",
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 8,
+    marginLeft: 18,
   },
   barLabel: {
     color: "#333", // 这里的颜色会被上面的内联样式覆盖，但以防万一还是改成深色
