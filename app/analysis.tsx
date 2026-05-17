@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BarChart, PieChart } from "react-native-gifted-charts";
+import { PieChart } from "react-native-gifted-charts";
 
 // 🚨 引入 Firebase
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -158,39 +158,10 @@ export default function AnalysisScreen() {
     const savingsRate =
       totalInc > 0 ? ((netCashFlow / totalInc) * 100).toFixed(1) : "0.0";
 
-    // 组装给 BarChart 的数据
-    const barData = [
-      {
-        value: totalInc,
-        label: "Income",
-        frontColor: palette.success,
-        topLabelComponent: () => (
-          // 🚨 把文字改成深色，配合白色底板
-          <Text style={[styles.barLabel, { color: palette.text }]}>
-            {formatCompactCurrency(totalInc)}
-          </Text>
-        ),
-      },
-      {
-        value: totalExp,
-        label: "Expense",
-        frontColor: palette.danger,
-        topLabelComponent: () => (
-          <Text style={[styles.barLabel, { color: palette.text }]}>
-            {formatCompactCurrency(totalExp)}
-          </Text>
-        ),
-      },
-    ];
-
-    // 找到最高的那根柱子，用来设置图表的最大高度
-    const maxValue = Math.max(totalInc, totalExp, 100);
-
-    return { totalInc, totalExp, netCashFlow, savingsRate, barData, maxValue };
+    return { totalInc, totalExp, netCashFlow, savingsRate };
   };
 
-  const { totalInc, totalExp, netCashFlow, savingsRate, barData, maxValue } =
-    getOverviewData();
+  const { totalInc, totalExp, netCashFlow, savingsRate } = getOverviewData();
 
   const changeMonth = (offset: number) => {
     const newDate = new Date(currentDate);
@@ -385,45 +356,60 @@ export default function AnalysisScreen() {
                 </Text>
               </View>
 
-              {/* 3. 红绿双柱对抗图 (BarChart) */}
-              <View style={styles.barChartWrapper}>
-                <Text style={styles.chartCaption}>
-                  Income vs Expense - {formatCompactCurrency(totalInc)} /{" "}
-                  {formatCompactCurrency(totalExp)}
-                </Text>
-                <BarChart
-                  data={barData}
-                  barWidth={44}
-                  spacing={46}
-                  roundedTop
-                  roundedBottom
-                  // 🚨 开启网格线
-                  hideRules
-                  rulesType="solid"
-                  rulesColor="transparent"
-                  // 🚨 开启 Y 轴和 X 轴
-                  yAxisThickness={0}
-                  xAxisThickness={0}
-                  yAxisColor="transparent"
-                  xAxisColor="transparent"
-                  // 🚨 显示 Y 轴数字，并设置颜色
-                  yAxisTextStyle={{
-                    color: "transparent",
-                    fontSize: 10,
-                  }}
-                  xAxisLabelTextStyle={{
-                    color: palette.textMuted,
-                    fontWeight: "800",
-                    marginTop: 5,
-                  }}
-                  noOfSections={4}
-                  maxValue={maxValue * 1.2}
-                  backgroundColor="transparent"
-                  initialSpacing={28}
-                  // 这个很重要，防止标签被切掉
-                  showFractionalValues={false}
-                />
+              <Text style={styles.cashFlowStatus}>
+                {netCashFlow > 0
+                  ? "Positive cash flow this month"
+                  : netCashFlow < 0
+                    ? "Expenses are higher than income"
+                    : "Income and expense are balanced"}
+              </Text>
+
+              <View style={styles.flowComparison}>
+                <Text style={styles.flowComparisonTitle}>Income vs Expense</Text>
+
+                <View style={styles.flowBarBlock}>
+                  <View style={styles.flowBarHeader}>
+                    <Text style={styles.flowBarLabel}>Income</Text>
+                    <Text style={styles.flowBarAmount}>{formatCompactCurrency(totalInc)}</Text>
+                  </View>
+                  <View style={styles.flowBarTrack}>
+                    <View
+                      style={[
+                        styles.flowBarFill,
+                        {
+                          backgroundColor: palette.success,
+                          width: `${Math.max(
+                            (totalInc / Math.max(totalInc, totalExp, 1)) * 100,
+                            totalInc > 0 ? 6 : 0,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.flowBarBlock}>
+                  <View style={styles.flowBarHeader}>
+                    <Text style={styles.flowBarLabel}>Expense</Text>
+                    <Text style={styles.flowBarAmount}>{formatCompactCurrency(totalExp)}</Text>
+                  </View>
+                  <View style={styles.flowBarTrack}>
+                    <View
+                      style={[
+                        styles.flowBarFill,
+                        {
+                          backgroundColor: palette.danger,
+                          width: `${Math.max(
+                            (totalExp / Math.max(totalInc, totalExp, 1)) * 100,
+                            totalExp > 0 ? 6 : 0,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
               </View>
+
             </View>
           )}
         </View>
@@ -531,7 +517,7 @@ const styles = StyleSheet.create({
   },
   headerIcon: { width: 40, alignItems: "flex-start" },
   headerTitle: { fontSize: 24, fontWeight: "900", color: palette.text },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  scrollContent: { padding: 20, paddingBottom: 140 },
   segmentContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -557,7 +543,7 @@ const styles = StyleSheet.create({
     borderColor: palette.border,
     borderRadius: radius.lg,
     borderWidth: 1,
-    padding: 20,
+    padding: 18,
     minHeight: 280,
     ...shadow.subtle,
   },
@@ -565,7 +551,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 30,
+    marginBottom: 22,
   },
   cardTitle: {
     fontSize: 22,
@@ -761,9 +747,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   netCashFlowValue: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: "900",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   savingsRatePill: {
     flexDirection: "row",
@@ -772,41 +758,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.pill,
-    marginBottom: 18,
+    marginBottom: 12,
   },
   savingsRateText: {
     color: palette.primary,
     fontWeight: "900",
     fontSize: 13,
   },
-  barChartWrapper: {
-    height: 220,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
+  cashFlowStatus: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  flowComparison: {
     backgroundColor: palette.surfaceMuted,
     borderColor: palette.border,
     borderRadius: radius.lg,
     borderWidth: 1,
-    paddingVertical: 16,
-    paddingRight: 10, // 给右边留点空隙
-    paddingLeft: 0, // 左边数字会占空间
-    marginTop: 6,
-    // 🚨 加上漂亮的阴影
+    padding: 14,
+    width: "100%",
   },
-  chartCaption: {
-    alignSelf: "flex-start",
-    color: palette.textMuted,
+  flowComparisonTitle: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: "900",
+    marginBottom: 12,
+  },
+  flowBarBlock: {
+    marginBottom: 12,
+  },
+  flowBarHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  flowBarLabel: {
+    color: palette.text,
     fontSize: 13,
     fontWeight: "900",
-    marginBottom: 8,
-    marginLeft: 18,
   },
-  barLabel: {
-    color: "#333", // 这里的颜色会被上面的内联样式覆盖，但以防万一还是改成深色
-    fontWeight: "bold",
-    fontSize: 12,
-    marginBottom: 5,
+  flowBarAmount: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  flowBarTrack: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.pill,
+    height: 11,
+    overflow: "hidden",
+  },
+  flowBarFill: {
+    borderRadius: radius.pill,
+    height: "100%",
   },
   txDate: { fontSize: 12, color: palette.textMuted, fontWeight: "600" },
   txAmount: { fontSize: 16, fontWeight: "900", color: palette.text },
