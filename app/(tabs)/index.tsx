@@ -241,7 +241,7 @@ export default function DashboardScreen() {
     return {
       allocated,
       budgetUsed,
-      categories: categoryStats.slice(0, 5),
+      categories: categoryStats,
       expenses,
       healthInsight,
       healthProfile,
@@ -416,42 +416,66 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.listCard}>
+              <View style={styles.breakdownCard}>
                 {dashboard.categories.length > 0 ? (
-                  dashboard.categories.map((item, index) => (
-                    <View
-                      key={item.name}
-                      style={[
-                        styles.categoryRow,
-                        index === dashboard.categories.length - 1 && styles.lastRow,
-                      ]}
-                    >
-                      <View style={styles.categoryTop}>
-                        <Text style={styles.categoryName} numberOfLines={1}>
-                          {item.name}
-                        </Text>
-                        <Text style={styles.categoryAmount}>
-                          {formatCurrency(item.spent)} / {formatCurrency(item.allocated)}
-                        </Text>
-                      </View>
-                      <View style={styles.categoryTrack}>
-                        <View
-                          style={[
-                            styles.categoryFill,
-                            {
-                              width: `${Math.min(item.progress * 100, 100)}%`,
-                              backgroundColor:
-                                item.progress >= 1
-                                  ? palette.danger
-                                  : item.progress >= 0.8
-                                    ? palette.warning
-                                    : palette.success,
-                            },
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  ))
+                  dashboard.categories.map((item) => {
+                    const isAtRisk = item.progress >= 0.8 && item.progress < 1;
+                    const isOverBudget = item.allocated > 0 && item.spent > item.allocated;
+
+                    return (
+                      <TouchableOpacity
+                        key={item.name}
+                        style={styles.breakdownItem}
+                        onPress={() => router.push("/budget")}
+                      >
+                        <View style={styles.breakdownTextRow}>
+                          <Text style={styles.breakdownCategoryName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+
+                          <View style={styles.breakdownAmountGroup}>
+                            <Text style={styles.breakdownAmountText}>
+                              RM {item.spent.toFixed(0)} / RM {item.allocated.toFixed(0)}
+                            </Text>
+                            {isOverBudget ? (
+                              <View style={styles.breakdownStatusBadge}>
+                                <Ionicons name="alert-circle" size={14} color={palette.danger} />
+                                <Text style={styles.breakdownStatusText}>Over!</Text>
+                              </View>
+                            ) : isAtRisk ? (
+                              <View style={styles.breakdownStatusBadge}>
+                                <Ionicons name="warning" size={14} color={palette.warning} />
+                                <Text
+                                  style={[
+                                    styles.breakdownStatusText,
+                                    { color: palette.warning },
+                                  ]}
+                                >
+                                  At risk
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+
+                        <View style={styles.breakdownProgressTrack}>
+                          <View
+                            style={[
+                              styles.breakdownProgressFill,
+                              {
+                                width: `${Math.min(item.progress * 100, 100)}%`,
+                              },
+                              isOverBudget
+                                ? styles.breakdownFillRed
+                                : isAtRisk
+                                  ? styles.breakdownFillYellow
+                                  : styles.breakdownFillGreen,
+                            ]}
+                          />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="wallet-outline" size={34} color={palette.textSoft} />
@@ -665,6 +689,67 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...shadow.subtle,
   },
+  breakdownCard: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    ...shadow.subtle,
+  },
+  breakdownItem: {
+    marginBottom: spacing.xxl,
+  },
+  breakdownTextRow: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.sm,
+  },
+  breakdownCategoryName: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "900",
+    marginRight: spacing.md,
+  },
+  breakdownAmountGroup: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
+  breakdownAmountText: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+    marginRight: spacing.sm,
+  },
+  breakdownStatusBadge: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
+  breakdownStatusText: {
+    color: palette.danger,
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: spacing.xs,
+  },
+  breakdownProgressTrack: {
+    backgroundColor: "#EFEFEF",
+    borderRadius: 6,
+    height: 12,
+    overflow: "hidden",
+  },
+  breakdownProgressFill: {
+    borderRadius: 6,
+    height: "100%",
+  },
+  breakdownFillGreen: {
+    backgroundColor: palette.success,
+  },
+  breakdownFillYellow: {
+    backgroundColor: palette.warning,
+  },
+  breakdownFillRed: {
+    backgroundColor: palette.danger,
+  },
   transactionRow: {
     alignItems: "center",
     borderBottomColor: palette.border,
@@ -720,38 +805,5 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: spacing.xs,
     textAlign: "center",
-  },
-  categoryRow: {
-    borderBottomColor: palette.border,
-    borderBottomWidth: 1,
-    padding: spacing.lg,
-  },
-  categoryTop: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: spacing.md,
-  },
-  categoryName: {
-    color: palette.text,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "800",
-    marginRight: spacing.md,
-  },
-  categoryAmount: {
-    color: palette.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  categoryTrack: {
-    backgroundColor: palette.accentSoft,
-    borderRadius: radius.pill,
-    height: 8,
-    overflow: "hidden",
-  },
-  categoryFill: {
-    borderRadius: radius.pill,
-    height: "100%",
   },
 });
