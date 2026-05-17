@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../../components/app-header";
 import { formatCurrency, palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
 
@@ -262,23 +262,24 @@ export default function DashboardScreen() {
           : "On track";
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Open transactions",
+          color: palette.primary,
+          icon: "receipt-outline",
+          onPress: () => router.push("/transaction"),
+        }}
+        subtitle="Smart Budget"
+        title="Overview"
+        titleAlign="left"
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Smart Budget</Text>
-            <Text style={styles.title}>Overview</Text>
-          </View>
-          <TouchableOpacity style={styles.iconButton} onPress={() => router.push("/transaction")}>
-            <Ionicons name="receipt-outline" size={22} color={palette.primary} />
-          </TouchableOpacity>
-        </View>
-
         {loading ? (
           <View style={styles.loadingCard}>
             <ActivityIndicator color={palette.primary} />
@@ -488,7 +489,7 @@ export default function DashboardScreen() {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

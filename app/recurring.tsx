@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import {
   collection,
   deleteDoc,
@@ -20,7 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../components/app-header";
 import { formatCurrency, palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -43,7 +42,6 @@ const getStatusColor = (item: RecurringTransaction) => {
 };
 
 export default function RecurringScreen() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [recurringItems, setRecurringItems] = useState<RecurringTransaction[]>(
     [],
@@ -138,16 +136,10 @@ export default function RecurringScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerIcon}>
-          <Ionicons name="arrow-back" size={30} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Recurring</Text>
-        <View style={styles.headerIcon} />
-      </View>
+      <AppHeader showBack title="Recurring" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -261,7 +253,7 @@ export default function RecurringScreen() {
           })
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

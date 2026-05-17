@@ -1,11 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   LayoutAnimation,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -27,6 +25,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import { AppHeader } from "../components/app-header";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
@@ -53,7 +52,6 @@ type CategoryType = {
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
 export default function ManageCategoriesScreen() {
-  const router = useRouter();
   const { showConfirm, showDialog } = useAppDialog();
   const duplicateCleanupInFlightRef = useRef(false);
 
@@ -303,24 +301,19 @@ export default function ManageCategoriesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerIcon}
-        >
-          <Ionicons name="arrow-back" size={32} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Categories</Text>
-        <TouchableOpacity
-          onPress={openAddParentModal}
-          style={styles.headerIconRight}
-        >
-          <Ionicons name="add-circle" size={32} color={palette.primary} />
-        </TouchableOpacity>
-      </View>
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Add category",
+          color: palette.primary,
+          icon: "add-circle",
+          onPress: openAddParentModal,
+        }}
+        showBack
+        title="Manage Categories"
+      />
 
       <View style={styles.content}>
         <View style={styles.segmentedControl}>
@@ -618,7 +611,7 @@ export default function ManageCategoriesScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

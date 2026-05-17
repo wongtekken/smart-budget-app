@@ -1,13 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 /* eslint-disable react/no-unescaped-entities */
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -28,6 +26,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { AppHeader } from "../components/app-header";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -60,7 +59,6 @@ const formatDate = (d: Date) => {
 };
 
 export default function GoalScreen() {
-  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
 
   const [goals, setGoals] = useState<GoalType[]>([]);
@@ -293,19 +291,10 @@ export default function GoalScreen() {
   const flexibleSavings = filteredGoals.filter((g) => g.type === "Flexible");
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerIcon}
-        >
-          <Ionicons name="arrow-back" size={32} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Goal</Text>
-        <View style={styles.headerIcon} />
-      </View>
+      <AppHeader showBack title="Goal" />
 
       <View style={styles.content}>
         <View style={styles.searchContainer}>
@@ -646,7 +635,7 @@ export default function GoalScreen() {
           }}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

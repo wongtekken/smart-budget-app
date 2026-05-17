@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Modal,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -24,6 +23,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { AppHeader } from "../components/app-header";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -269,19 +269,10 @@ export default function TemplateScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerIcon}
-        >
-          <Ionicons name="arrow-back" size={32} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Budget Templates</Text>
-        <View style={{ width: 32 }} />
-      </View>
+      <AppHeader showBack title="Budget Templates" />
 
       <View style={styles.content}>
         <View style={styles.searchContainer}>
@@ -604,7 +595,7 @@ export default function TemplateScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

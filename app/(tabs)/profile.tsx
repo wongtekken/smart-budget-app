@@ -23,7 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../../components/app-header";
 import { useAppDialog } from "../../components/app-dialog";
 import {
   AchievementCategoryData,
@@ -380,10 +380,8 @@ export default function ProfileScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-      </View>
+    <View style={styles.container}>
+      <AppHeader title="Profile" />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -541,7 +539,7 @@ export default function ProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -23,7 +23,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../components/app-header";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -190,21 +190,17 @@ export default function TransactionsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerIcon}
-        >
-          <Ionicons name="arrow-back" size={32} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Transactions</Text>
-        <TouchableOpacity style={styles.headerIcon}>
-          <Ionicons name="options-outline" size={30} color="#000" />
-        </TouchableOpacity>
-      </View>
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Transaction options",
+          icon: "options-outline",
+        }}
+        showBack
+        title="Transactions"
+      />
 
       <View style={styles.content}>
         <View style={styles.monthNavigator}>
@@ -473,7 +469,7 @@ export default function TransactionsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -1,8 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -14,6 +12,7 @@ import { PieChart } from "react-native-gifted-charts";
 
 // 🚨 引入 Firebase
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { AppHeader } from "../components/app-header";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -45,8 +44,6 @@ const formatCompactCurrency = (value: number) => {
 };
 
 export default function AnalysisScreen() {
-  const router = useRouter();
-
   const [activeTab, setActiveTab] = useState<"Expense" | "Income" | "Overview">(
     "Expense",
   );
@@ -193,21 +190,17 @@ export default function AnalysisScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerIcon}
-        >
-          <Ionicons name="arrow-back" size={32} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Financial Analysis</Text>
-        <TouchableOpacity style={styles.headerIcon}>
-          <Ionicons name="options-outline" size={30} color="#000" />
-        </TouchableOpacity>
-      </View>
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Analysis options",
+          icon: "options-outline",
+        }}
+        showBack
+        title="Financial Analysis"
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -499,7 +492,7 @@ export default function AnalysisScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

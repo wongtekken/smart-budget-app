@@ -1,16 +1,13 @@
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -21,11 +18,11 @@ import {
   AchievementType,
   buildAchievements,
 } from "../constants/achievements";
+import { AppHeader } from "../components/app-header";
 import { palette } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
 export default function AchievementsScreen() {
-  const router = useRouter();
   const [categories, setCategories] = useState<AchievementCategoryData[]>([]);
   const [templates, setTemplates] = useState<AchievementTemplateData[]>([]);
   const [transactions, setTransactions] = useState<AchievementTransactionData[]>(
@@ -177,16 +174,10 @@ export default function AchievementsScreen() {
   const lockedList = achievements.filter((achievement) => !achievement.isUnlocked);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerIcon}>
-          <Ionicons name="arrow-back" size={32} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Achievements</Text>
-        <View style={styles.headerIcon} />
-      </View>
+      <AppHeader showBack title="Achievements" />
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -216,7 +207,7 @@ export default function AchievementsScreen() {
           ))}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

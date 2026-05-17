@@ -36,7 +36,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "../../components/app-header";
 import { useAppDialog } from "../../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
@@ -759,18 +759,15 @@ export default function AddTransactionScreen() {
   const isVoiceAnalyzing = aiMode === "voice" && !recorderState.isRecording;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={28} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {editId ? "Edit Transaction" : "Add Transaction"}
-        </Text>
-        <TouchableOpacity>
-          <Ionicons name="options-outline" size={28} color={palette.text} />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.container}>
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Transaction options",
+          icon: "options-outline",
+        }}
+        showBack
+        title={editId ? "Edit Transaction" : "Add Transaction"}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -1223,7 +1220,7 @@ export default function AddTransactionScreen() {
           }}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

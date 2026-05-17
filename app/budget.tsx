@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Modal,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,6 +21,7 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
+import { AppHeader } from "../components/app-header";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -286,12 +286,10 @@ export default function BudgetScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Budget ({currentMonthStr})</Text>
-      </View>
+      <AppHeader showBack title={`Budget (${currentMonthStr})`} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -647,7 +645,7 @@ export default function BudgetScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
