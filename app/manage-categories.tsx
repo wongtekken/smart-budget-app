@@ -304,16 +304,7 @@ export default function ManageCategoriesScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <AppHeader
-        rightAction={{
-          accessibilityLabel: "Add category",
-          color: palette.primary,
-          icon: "add-circle",
-          onPress: openAddParentModal,
-        }}
-        showBack
-        title="Manage Categories"
-      />
+      <AppHeader showBack title="Manage Categories" />
 
       <View style={styles.content}>
         <View style={styles.segmentedControl}>
@@ -372,6 +363,16 @@ export default function ManageCategoriesScreen() {
             onChangeText={setSearchQuery}
           />
         </View>
+
+        <TouchableOpacity style={styles.newButton} onPress={openAddParentModal}>
+          <Ionicons
+            name="add-circle"
+            size={20}
+            color="#FFF"
+            style={styles.addIcon}
+          />
+          <Text style={styles.newButtonText}>Add Category</Text>
+        </TouchableOpacity>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -617,19 +618,6 @@ export default function ManageCategoriesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.background },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    backgroundColor: palette.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: palette.border,
-  },
-  headerIcon: { width: 40, alignItems: "flex-start" },
-  headerIconRight: { width: 40, alignItems: "flex-end" },
-  headerTitle: { fontSize: 20, fontWeight: "900", color: palette.text },
   content: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
   segmentedControl: {
     flexDirection: "row",
@@ -664,6 +652,18 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, color: palette.text },
+  newButton: {
+    flexDirection: "row",
+    backgroundColor: palette.primary,
+    borderRadius: radius.pill,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 25,
+    ...shadow.subtle,
+  },
+  addIcon: { marginRight: 8 },
+  newButtonText: { fontSize: 18, fontWeight: "bold", color: "#FFF" },
   listContainer: { paddingBottom: 40 },
   cardGroup: {
     ...shadow.subtle,
