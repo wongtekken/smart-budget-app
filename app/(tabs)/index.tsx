@@ -48,6 +48,45 @@ const normalizeType = (type?: string) => type?.toLowerCase();
 const getTransactionTime = (tx: Transaction) =>
   tx.createdAt?.toMillis?.() ?? new Date(tx.date || "1970-01-01").getTime();
 
+const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+
+const getMonthProgress = (month: string) => {
+  const activeMonth = getLocalMonthStr();
+
+  if (month < activeMonth) {
+    return 1;
+  }
+
+  if (month > activeMonth) {
+    return 0;
+  }
+
+  const [year, monthNumber] = month.split("-").map(Number);
+  const totalDays = new Date(year, monthNumber, 0).getDate();
+
+  return clamp(new Date().getDate() / totalDays);
+};
+
+const getHealthProfile = (score: number) => {
+  if (score >= 85) {
+    return { color: palette.success, grade: "Excellent", icon: "shield-checkmark-outline" as const };
+  }
+
+  if (score >= 70) {
+    return { color: palette.primary, grade: "Good", icon: "trending-up-outline" as const };
+  }
+
+  if (score >= 55) {
+    return { color: palette.warning, grade: "Fair", icon: "alert-circle-outline" as const };
+  }
+
+  if (score >= 40) {
+    return { color: palette.warning, grade: "Getting started", icon: "flag-outline" as const };
+  }
+
+  return { color: palette.danger, grade: "Needs attention", icon: "warning-outline" as const };
+};
+
 export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -128,13 +167,10 @@ export default function DashboardScreen() {
     const allocated = Object.values(allocations).reduce((sum, value) => sum + Number(value || 0), 0);
     const budgetUsed = allocated > 0 ? expenses / allocated : 0;
     const netCashFlow = income - expenses;
-    const savingsRate = income > 0 ? (netCashFlow / income) * 100 : 0;
-    const healthScore = Math.max(
-      0,
-      Math.min(100, Math.round(72 + Math.min(savingsRate, 25) - Math.max(budgetUsed - 1, 0) * 45)),
-    );
 
-    const categories = Object.keys({ ...allocations, ...spentByCategory })
+    const monthProgress = getMonthProgress(currentMonth);
+    const budgetExpectedUsage = allocated > 0 ? Math.min(monthProgress + 0.08, 1) : 0;
+    const categoryStats = Object.keys({ ...allocations, ...spentByCategory })
       .map((name) => {
         const allocatedAmount = Number(allocations[name] || 0);
         const spent = spentByCategory[name] || 0;
@@ -147,20 +183,74 @@ export default function DashboardScreen() {
           progress,
         };
       })
-      .sort((a, b) => b.progress - a.progress)
-      .slice(0, 5);
+      .sort((a, b) => b.progress - a.progress);
+    const budgetedCategoryCount = categoryStats.filter((item) => item.allocated > 0).length;
+    const overBudgetCategoryCount = categoryStats.filter(
+      (item) => item.allocated > 0 && item.progress > 1,
+    ).length;
+    const warningCategoryCount = categoryStats.filter(
+      (item) => item.allocated > 0 && item.progress >= 0.85 && item.progress <= 1,
+    ).length;
+    const unbudgetedSpent = categoryStats
+      .filter((item) => item.allocated === 0)
+      .reduce((sum, item) => sum + item.spent, 0);
+    const unbudgetedShare = expenses > 0 ? unbudgetedSpent / expenses : 0;
+
+    const cashFlowScore =
+      income > 0 ? (netCashFlow >= 0 ? 25 : clamp(1 + netCashFlow / income) * 25) : expenses > 0 ? 0 : 13;
+    const savingsRateRatio = income > 0 ? netCashFlow / income : 0;
+    const savingsScore =
+      income > 0 ? clamp((savingsRateRatio + 0.05) / 0.25) * 25 : expenses > 0 ? 0 : 12;
+    const budgetScore =
+      allocated === 0
+        ? expenses > 0
+          ? 6
+          : 15
+        : budgetUsed <= budgetExpectedUsage
+          ? 30
+          : budgetUsed <= 1
+            ? 30 - clamp((budgetUsed - budgetExpectedUsage) / Math.max(1 - budgetExpectedUsage, 0.01)) * 12
+            : Math.max(0, 18 - (budgetUsed - 1) * 60);
+    const categoryScore =
+      budgetedCategoryCount === 0
+        ? expenses > 0
+          ? 6
+          : 12
+        : clamp(
+            20 - overBudgetCategoryCount * 6 - warningCategoryCount * 2 - unbudgetedShare * 10,
+            0,
+            20,
+          );
+    const healthScore = Math.round(cashFlowScore + savingsScore + budgetScore + categoryScore);
+    const healthProfile = getHealthProfile(healthScore);
+    const healthInsight =
+      income === 0 && expenses > 0
+        ? "Add income records so the score can judge your month accurately."
+        : allocated === 0
+          ? "Set a monthly budget to unlock a stronger, more accurate score."
+          : netCashFlow < 0
+            ? "Expenses are higher than income this month."
+            : budgetUsed > 1
+              ? "Your total spend has passed the monthly budget."
+              : overBudgetCategoryCount > 0
+                ? `${overBudgetCategoryCount} category ${overBudgetCategoryCount > 1 ? "budgets are" : "budget is"} over limit.`
+                : savingsRateRatio < 0.1
+                  ? "Cash flow is positive. Aim for at least 10% savings."
+                  : "Healthy pace. Your income, savings, and budget are aligned.";
 
     return {
       allocated,
       budgetUsed,
-      categories,
+      categories: categoryStats.slice(0, 5),
       expenses,
+      healthInsight,
+      healthProfile,
       healthScore,
       income,
       latestTransactions: transactions.slice(0, 4),
       netCashFlow,
     };
-  }, [allocations, transactions]);
+  }, [allocations, currentMonth, transactions]);
 
   const budgetStatus =
     dashboard.allocated === 0
@@ -199,37 +289,37 @@ export default function DashboardScreen() {
             <View style={styles.heroCard}>
               <View style={styles.heroHeader}>
                 <View>
-                  <Text style={styles.cardLabel}>Net cash flow</Text>
-                  <Text
-                    style={[
-                      styles.heroAmount,
-                      { color: dashboard.netCashFlow >= 0 ? palette.success : palette.danger },
-                    ]}
-                  >
-                    {dashboard.netCashFlow >= 0 ? "+" : "-"}
-                    {formatCurrency(Math.abs(dashboard.netCashFlow))}
-                  </Text>
+                  <Text style={styles.cardLabel}>Financial Health Score</Text>
+                  <Text style={styles.cardSubLabel}>This month</Text>
                 </View>
-                <View style={styles.scoreBadge}>
-                  <Ionicons name="pulse-outline" size={16} color={palette.primary} />
-                  <Text style={styles.scoreText}>{dashboard.healthScore}</Text>
+                <View style={styles.gradeBadge}>
+                  <Ionicons name={dashboard.healthProfile.icon} size={16} color={palette.primary} />
+                  <Text style={styles.gradeText}>{dashboard.healthProfile.grade}</Text>
                 </View>
               </View>
 
-              <View style={styles.summaryGrid}>
-                <View style={styles.summaryTile}>
-                  <Text style={styles.summaryLabel}>Income</Text>
-                  <Text style={[styles.summaryValue, { color: palette.success }]}>
-                    {formatCurrency(dashboard.income)}
-                  </Text>
+              <View style={styles.scorePanel}>
+                <View style={styles.scoreMainRow}>
+                  <View style={styles.scoreNumberWrap}>
+                    <Text style={styles.scoreNumber}>{dashboard.healthScore}</Text>
+                    <Text style={styles.scoreDivider}>/100</Text>
+                  </View>
+                  <Text style={styles.scoreInsight}>{dashboard.healthInsight}</Text>
                 </View>
-                <View style={styles.summaryTile}>
-                  <Text style={styles.summaryLabel}>Expense</Text>
-                  <Text style={[styles.summaryValue, { color: palette.danger }]}>
-                    {formatCurrency(dashboard.expenses)}
-                  </Text>
+
+                <View style={styles.scoreTrack}>
+                  <View
+                    style={[
+                      styles.scoreFill,
+                      {
+                        width: `${dashboard.healthScore}%`,
+                      },
+                    ]}
+                  />
                 </View>
+
               </View>
+
             </View>
 
             <TouchableOpacity style={styles.budgetCard} onPress={() => router.push("/budget")}>
@@ -426,60 +516,90 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   heroCard: {
-    backgroundColor: palette.accent,
+    backgroundColor: "#FFD166",
     borderRadius: radius.xl,
     marginBottom: spacing.lg,
     padding: spacing.xl,
     ...shadow.card,
   },
   heroHeader: {
+    alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   cardLabel: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: spacing.sm,
-  },
-  heroAmount: {
-    fontSize: 34,
+    color: palette.text,
+    fontSize: 17,
     fontWeight: "800",
   },
-  scoreBadge: {
+  cardSubLabel: {
+    color: "rgba(31,41,51,0.62)",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: spacing.xs,
+  },
+  gradeBadge: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: palette.primarySoft,
+    borderColor: "rgba(255,130,22,0.18)",
+    borderWidth: 1,
     borderRadius: radius.pill,
     flexDirection: "row",
-    height: 38,
+    minHeight: 34,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  scoreText: {
-    color: palette.text,
-    fontSize: 16,
+  gradeText: {
+    color: palette.primary,
+    fontSize: 12,
     fontWeight: "800",
     marginLeft: spacing.xs,
   },
-  summaryGrid: {
+  scorePanel: {
+    marginBottom: spacing.lg,
+  },
+  scoreMainRow: {
+    alignItems: "flex-end",
     flexDirection: "row",
     gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  summaryTile: {
-    backgroundColor: "rgba(255,255,255,0.55)",
-    borderRadius: radius.md,
-    flex: 1,
-    padding: spacing.md,
+  scoreNumberWrap: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    flexShrink: 0,
   },
-  summaryLabel: {
-    color: palette.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: spacing.sm,
+  scoreNumber: {
+    color: palette.primary,
+    fontSize: 62,
+    fontWeight: "900",
+    lineHeight: 68,
   },
-  summaryValue: {
-    fontSize: 16,
+  scoreDivider: {
+    color: "rgba(31,41,51,0.72)",
+    fontSize: 18,
     fontWeight: "800",
+    marginLeft: spacing.xs,
+  },
+  scoreInsight: {
+    color: "rgba(31,41,51,0.78)",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    paddingBottom: spacing.sm,
+  },
+  scoreTrack: {
+    backgroundColor: "rgba(255,255,255,0.62)",
+    borderRadius: radius.pill,
+    height: 12,
+    overflow: "hidden",
+  },
+  scoreFill: {
+    backgroundColor: palette.primary,
+    borderRadius: radius.pill,
+    height: "100%",
   },
   budgetCard: {
     backgroundColor: "#5AC37B",
