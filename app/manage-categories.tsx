@@ -50,6 +50,8 @@ type CategoryType = {
   goalId?: string;
 };
 
+const normalizeName = (value: string) => value.trim().toLowerCase();
+
 export default function ManageCategoriesScreen() {
   const router = useRouter();
   const { showConfirm, showDialog } = useAppDialog();
@@ -213,7 +215,9 @@ export default function ManageCategoriesScreen() {
   };
 
   const handleSaveCategory = async () => {
-    if (!newCategoryName.trim()) {
+    const trimmedName = newCategoryName.trim();
+
+    if (!trimmedName) {
       showDialog({
         title: "Oops",
         message: "Please enter a name.",
@@ -224,16 +228,36 @@ export default function ManageCategoriesScreen() {
     const user = auth.currentUser;
     if (!user) return;
 
+    const targetParentId = editingCategory
+      ? editingCategory.parentId || null
+      : addingToParentId || null;
+    const duplicateCategory = categories.find(
+      (category) =>
+        category.id !== editingCategory?.id &&
+        category.type === activeTab &&
+        (category.parentId || null) === targetParentId &&
+        normalizeName(category.name) === normalizeName(trimmedName),
+    );
+
+    if (duplicateCategory) {
+      showDialog({
+        title: "Duplicate Category",
+        message: `"${trimmedName}" already exists. Please use a different category name.`,
+        type: "warning",
+      });
+      return;
+    }
+
     try {
       if (editingCategory) {
         await updateDoc(doc(db, "categories", editingCategory.id), {
-          name: newCategoryName.trim(),
+          name: trimmedName,
         });
       } else {
         await addDoc(collection(db, "categories"), {
           userId: user.uid,
           type: activeTab,
-          name: newCategoryName.trim(),
+          name: trimmedName,
           icon: addingToParentId ? "ellipse-outline" : "star",
           parentId: addingToParentId,
           isDefault: false,

@@ -42,6 +42,8 @@ type TemplateType = {
   templateKey?: string;
 };
 
+const normalizeName = (value: string) => value.trim().toLowerCase();
+
 export default function TemplateScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,7 +144,9 @@ export default function TemplateScreen() {
   };
 
   const handleSaveTemplate = async () => {
-    if (!newTemplateName.trim()) {
+    const trimmedName = newTemplateName.trim();
+
+    if (!trimmedName) {
       Alert.alert("Oops", "Please give your template a name.");
       return;
     }
@@ -158,17 +162,31 @@ export default function TemplateScreen() {
     const user = auth.currentUser;
     if (!user) return;
 
+    const duplicateTemplate = templates.find(
+      (template) =>
+        template.id !== editingTemplateId &&
+        normalizeName(template.name) === normalizeName(trimmedName),
+    );
+
+    if (duplicateTemplate) {
+      Alert.alert(
+        "Duplicate Template",
+        `"${trimmedName}" already exists. Please use a different template name.`,
+      );
+      return;
+    }
+
     try {
       if (editingTemplateId) {
         await updateDoc(doc(db, "templates", editingTemplateId), {
-          name: newTemplateName.trim(),
+          name: trimmedName,
           allocations: draftAllocations,
           updatedAt: new Date(),
         });
       } else {
         await addDoc(collection(db, "templates"), {
           userId: user.uid,
-          name: newTemplateName.trim(),
+          name: trimmedName,
           allocations: draftAllocations,
           createdAt: new Date(),
         });

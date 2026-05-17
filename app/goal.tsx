@@ -42,6 +42,8 @@ type GoalType = {
   createdAt: string;
 };
 
+const normalizeName = (value: string) => value.trim().toLowerCase();
+
 const calculateDaysLeft = (deadlineStr?: string) => {
   if (!deadlineStr) return 0;
   const today = new Date();
@@ -165,7 +167,9 @@ export default function GoalScreen() {
   // 🛠️ 核心操作：保存与同步分类
   // ==========================================
   const handleSaveGoal = async () => {
-    if (!newTitle.trim()) {
+    const trimmedTitle = newTitle.trim();
+
+    if (!trimmedTitle) {
       Alert.alert("Oops", "Please enter a goal title.");
       return;
     }
@@ -181,7 +185,7 @@ export default function GoalScreen() {
       const initialAmt = Number(newInitialAmount) || 0;
       const baseData: any = {
         type: newType,
-        title: newTitle.trim(),
+        title: trimmedTitle,
         initialAmount: initialAmt, // 存入初始金额
       };
 
@@ -195,6 +199,33 @@ export default function GoalScreen() {
         delete baseData.title;
         await updateDoc(doc(db, "goals", editingGoalId), baseData);
       } else {
+        const goalCategoryName = `🎯 ${trimmedTitle}`;
+        const duplicateCategorySnapshot = await getDocs(
+          query(
+            collection(db, "categories"),
+            where("userId", "==", user.uid),
+            where("type", "==", "Expense"),
+          ),
+        );
+        const hasDuplicateCategory = duplicateCategorySnapshot.docs.some(
+          (categoryDoc) => {
+            const data = categoryDoc.data();
+            return (
+              !data.parentId &&
+              normalizeName(String(data.name || "")) ===
+                normalizeName(goalCategoryName)
+            );
+          },
+        );
+
+        if (hasDuplicateCategory) {
+          Alert.alert(
+            "Duplicate Category",
+            `"${goalCategoryName}" already exists. Please use a different goal title.`,
+          );
+          return;
+        }
+
         // 🚨 新建模式：不仅建 Goal，还要建一个“幽灵分类”
         const goalRef = await addDoc(collection(db, "goals"), {
           ...baseData,
@@ -206,7 +237,7 @@ export default function GoalScreen() {
         await addDoc(collection(db, "categories"), {
           userId: user.uid,
           type: "Expense", // 把存钱看作一种特殊的预算支出
-          name: `🎯 ${newTitle.trim()}`,
+          name: goalCategoryName,
           icon: "flag-outline",
           parentId: null,
           isDefault: false,
@@ -836,3 +867,4 @@ const styles = StyleSheet.create({
   },
   actionDivider: { height: 1, backgroundColor: palette.border },
 });
+
