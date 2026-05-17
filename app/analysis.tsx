@@ -30,12 +30,22 @@ const CHART_COLORS = [
   "#F59E0B",
 ];
 
-const formatMonthDisplay = (date: Date) => {
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+const getLocalMonthStr = (date = new Date()) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 7);
 };
 
-const getMonthStr = (date: Date) => {
-  return date.toISOString().slice(0, 7);
+const getMonthLabel = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(year, monthIndex - 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+};
+
+const getDateFromMonth = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(year, monthIndex - 1, 1);
 };
 
 const formatCompactCurrency = (value: number) => {
@@ -49,12 +59,15 @@ export default function AnalysisScreen() {
   );
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
+  const selectedMonth = getLocalMonthStr(currentDate);
+  const currentMonth = getLocalMonthStr();
+  const isCurrentMonth = selectedMonth >= currentMonth;
 
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const monthStr = getMonthStr(currentDate);
+    const monthStr = selectedMonth;
     const startOfMonth = `${monthStr}-01`;
     const endOfMonth = `${monthStr}-31`;
 
@@ -72,7 +85,7 @@ export default function AnalysisScreen() {
     });
 
     return () => unsubscribe();
-  }, [currentDate]);
+  }, [selectedMonth]);
 
   const generateChartData = () => {
     if (activeTab === "Overview") return { chartData: [], totalAmount: 0 };
@@ -115,8 +128,7 @@ export default function AnalysisScreen() {
     const today = new Date();
     let daysToDivide = 30;
     if (
-      currentDate.getMonth() === today.getMonth() &&
-      currentDate.getFullYear() === today.getFullYear()
+      selectedMonth === getLocalMonthStr(today)
     ) {
       daysToDivide = today.getDate() || 1;
     } else {
@@ -161,9 +173,15 @@ export default function AnalysisScreen() {
   const { totalInc, totalExp, netCashFlow, savingsRate } = getOverviewData();
 
   const changeMonth = (offset: number) => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(newDate.getMonth() + offset);
-    setCurrentDate(newDate);
+    setCurrentDate((date) => {
+      const nextDate = new Date(date.getFullYear(), date.getMonth() + offset, 1);
+      if (getLocalMonthStr(nextDate) > currentMonth) return date;
+      return nextDate;
+    });
+  };
+
+  const resetToCurrentMonth = () => {
+    setCurrentDate(getDateFromMonth(currentMonth));
   };
 
   const TabButton = ({
@@ -212,6 +230,38 @@ export default function AnalysisScreen() {
           <TabButton title="Overview" />
         </View>
 
+        <View style={styles.monthNavigator}>
+          <TouchableOpacity
+            style={styles.monthButton}
+            onPress={() => changeMonth(-1)}
+          >
+            <Ionicons name="chevron-back" size={22} color={palette.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.monthLabelButton}
+            onPress={resetToCurrentMonth}
+          >
+            <Text style={styles.monthLabel}>{getMonthLabel(selectedMonth)}</Text>
+            <Text style={styles.monthHint}>Tap to return to this month</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.monthButton,
+              isCurrentMonth && styles.monthButtonDisabled,
+            ]}
+            onPress={() => changeMonth(1)}
+            disabled={isCurrentMonth}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color={isCurrentMonth ? palette.textSoft : palette.primary}
+            />
+          </TouchableOpacity>
+        </View>
+
         {/* ========================================== */}
         {/* 🚨 区域 1：大黄卡片 (图表专属) */}
         {/* ========================================== */}
@@ -222,24 +272,6 @@ export default function AnalysisScreen() {
                 ? "Net Cash Flow"
                 : `Monthly ${activeTab}s`}
             </Text>
-
-            <View style={styles.monthSelector}>
-              <TouchableOpacity
-                onPress={() => changeMonth(-1)}
-                style={{ padding: 5 }}
-              >
-              <Ionicons name="chevron-back" size={18} color={palette.primary} />
-              </TouchableOpacity>
-              <Text style={styles.monthText}>
-                {formatMonthDisplay(currentDate)}
-              </Text>
-              <TouchableOpacity
-                onPress={() => changeMonth(1)}
-                style={{ padding: 5 }}
-              >
-              <Ionicons name="chevron-forward" size={18} color={palette.primary} />
-              </TouchableOpacity>
-            </View>
           </View>
 
           {activeTab !== "Overview" ? (
@@ -529,6 +561,46 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 15, fontWeight: "bold" },
   tabTextActive: { color: "#FFF" },
   tabTextInactive: { color: palette.textMuted },
+  monthNavigator: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    padding: 8,
+    ...shadow.subtle,
+  },
+  monthButton: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderRadius: 14,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  monthButtonDisabled: {
+    backgroundColor: palette.surfaceMuted,
+  },
+  monthLabelButton: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  monthLabel: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  monthHint: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
 
   // 大黄卡片
   chartCard: {
@@ -550,20 +622,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "900",
     color: palette.text,
-  },
-  monthSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: 15,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  monthText: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: palette.text,
-    marginHorizontal: 5,
   },
   chartContent: {
     flexDirection: "column",
