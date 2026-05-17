@@ -12,7 +12,6 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -266,7 +265,11 @@ export default function ProfileScreen() {
       await signOut(auth);
       router.replace("/login");
     } catch {
-      Alert.alert("Log Out Failed", "Please try again.");
+      showDialog({
+        title: "Log Out Failed",
+        message: "Please try again.",
+        type: "error",
+      });
     }
   };
 

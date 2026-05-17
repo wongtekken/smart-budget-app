@@ -203,7 +203,7 @@ export default function ManageCategoriesScreen() {
         }
       }
       await deleteDoc(doc(db, "categories", id));
-    } catch (error) {
+    } catch {
       showDialog({
         title: "Error",
         message: "Failed to delete.",
@@ -263,7 +263,7 @@ export default function ManageCategoriesScreen() {
         });
       }
       closeModal();
-    } catch (error) {
+    } catch {
       showDialog({
         title: "Error",
         message: "Failed to save category.",

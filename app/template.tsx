@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   ScrollView,
   StatusBar,
@@ -24,6 +23,7 @@ import {
   where,
 } from "firebase/firestore";
 import { AppHeader } from "../components/app-header";
+import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -46,6 +46,7 @@ const normalizeName = (value: string) => value.trim().toLowerCase();
 
 export default function TemplateScreen() {
   const router = useRouter();
+  const { showConfirm, showDialog } = useAppDialog();
   const [searchQuery, setSearchQuery] = useState("");
 
   const [templates, setTemplates] = useState<TemplateType[]>([]);
@@ -147,15 +148,27 @@ export default function TemplateScreen() {
     const trimmedName = newTemplateName.trim();
 
     if (!trimmedName) {
-      Alert.alert("Oops", "Please give your template a name.");
+      showDialog({
+        title: "Oops",
+        message: "Please give your template a name.",
+        type: "warning",
+      });
       return;
     }
     if (draftAllocations.length === 0) {
-      Alert.alert("Oops", "Add at least one category.");
+      showDialog({
+        title: "Oops",
+        message: "Add at least one category.",
+        type: "warning",
+      });
       return;
     }
     if (isExceeding) {
-      Alert.alert("Error", "Total percentage cannot exceed 100%.");
+      showDialog({
+        title: "Error",
+        message: "Total percentage cannot exceed 100%.",
+        type: "error",
+      });
       return;
     }
 
@@ -169,10 +182,11 @@ export default function TemplateScreen() {
     );
 
     if (duplicateTemplate) {
-      Alert.alert(
-        "Duplicate Template",
-        `"${trimmedName}" already exists. Please use a different template name.`,
-      );
+      showDialog({
+        title: "Duplicate Template",
+        message: `"${trimmedName}" already exists. Please use a different template name.`,
+        type: "warning",
+      });
       return;
     }
 
@@ -193,7 +207,11 @@ export default function TemplateScreen() {
       }
       closeModal();
     } catch {
-      Alert.alert("Error", "Failed to save template.");
+      showDialog({
+        title: "Error",
+        message: "Failed to save template.",
+        type: "error",
+      });
     }
   };
 
@@ -206,10 +224,11 @@ export default function TemplateScreen() {
 
   const openEditModal = (template: TemplateType) => {
     if (template.isDefault) {
-      Alert.alert(
-        "System Template",
-        "Default templates cannot be edited or deleted.",
-      );
+      showDialog({
+        title: "System Template",
+        message: "Default templates cannot be edited or deleted.",
+        type: "info",
+      });
       return;
     }
 
@@ -229,10 +248,11 @@ export default function TemplateScreen() {
   // 🚨 长按唤出操作菜单
   const handleLongPress = (template: TemplateType) => {
     if (template.isDefault) {
-      Alert.alert(
-        "System Template",
-        "Default templates cannot be edited or deleted.",
-      );
+      showDialog({
+        title: "System Template",
+        message: "Default templates cannot be edited or deleted.",
+        type: "info",
+      });
       return;
     }
 
@@ -240,28 +260,35 @@ export default function TemplateScreen() {
     setActionMenuVisible(true);
   };
 
-  const handleDeleteTemplate = (id: string, name: string) => {
+  const handleDeleteTemplate = async (id: string, name: string) => {
     const template = templates.find((item) => item.id === id);
     if (template?.isDefault) {
-      Alert.alert(
-        "System Template",
-        "Default templates cannot be edited or deleted.",
-      );
+      showDialog({
+        title: "System Template",
+        message: "Default templates cannot be edited or deleted.",
+        type: "info",
+      });
       return;
     }
 
-    Alert.alert(
-      "Delete Template",
-      `Are you sure you want to delete "${name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteDoc(doc(db, "templates", id)),
-        },
-      ],
-    );
+    const confirmed = await showConfirm({
+      title: "Delete Template",
+      message: `Are you sure you want to delete "${name}"?`,
+      confirmLabel: "Delete",
+      type: "error",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, "templates", id));
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to delete template.",
+        type: "error",
+      });
+    }
   };
 
   const filteredTemplates = templates.filter((t) =>
@@ -373,26 +400,22 @@ export default function TemplateScreen() {
               ))}
               <TouchableOpacity
                 style={styles.applyBtn}
-                onPress={() => {
-                  Alert.alert(
-                    "Apply Template",
-                    `Apply "${template.name}" to this month's budget?`,
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Apply",
-                        onPress: () =>
-                          router.navigate({
-                            pathname: "/budget",
-                            params: {
-                              injectedTemplate: JSON.stringify(
-                                template.allocations,
-                              ),
-                            },
-                          }),
-                      },
-                    ],
-                  );
+                onPress={async () => {
+                  const confirmed = await showConfirm({
+                    title: "Apply Template",
+                    message: `Apply "${template.name}" to this month's budget?`,
+                    confirmLabel: "Apply",
+                    type: "confirm",
+                  });
+
+                  if (!confirmed) return;
+
+                  router.navigate({
+                    pathname: "/budget",
+                    params: {
+                      injectedTemplate: JSON.stringify(template.allocations),
+                    },
+                  });
                 }}
               >
                 <Ionicons

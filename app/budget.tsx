@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   ScrollView,
   StatusBar,
@@ -22,6 +21,7 @@ import {
   where,
 } from "firebase/firestore";
 import { AppHeader } from "../components/app-header";
+import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -34,6 +34,7 @@ const getLocalMonthStr = () => {
 
 export default function BudgetScreen() {
   const router = useRouter();
+  const { showDialog } = useAppDialog();
   const params = useLocalSearchParams();
   const currentMonthStr = getLocalMonthStr();
 
@@ -191,7 +192,11 @@ export default function BudgetScreen() {
             { merge: true },
           );
 
-          Alert.alert("Success", "Template applied to your budget!");
+          showDialog({
+            title: "Success",
+            message: "Template applied to your budget!",
+            type: "success",
+          });
           router.setParams({ injectedTemplate: "" });
         } catch (error) {
           console.error("Template Parse Error", error);
@@ -200,7 +205,7 @@ export default function BudgetScreen() {
 
       executeTemplate();
     }
-  }, [params.injectedTemplate, totalAvailable, currentMonthStr]);
+  }, [currentMonthStr, params.injectedTemplate, router, showDialog, totalAvailable]);
 
   const handleSaveSingleBudget = async () => {
     const user = auth.currentUser;
@@ -221,19 +226,31 @@ export default function BudgetScreen() {
         { merge: true },
       );
       setEditModalVisible(false);
-    } catch (error) {
-      Alert.alert("Error", "Failed to update category budget.");
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to update category budget.",
+        type: "error",
+      });
     }
   };
 
   // 🚨 新增：把闲置分类添加进预算
   const handleSaveNewBudget = async () => {
     if (!addCategoryName) {
-      Alert.alert("Oops", "Please select a category.");
+      showDialog({
+        title: "Oops",
+        message: "Please select a category.",
+        type: "warning",
+      });
       return;
     }
     if (!addAmount) {
-      Alert.alert("Oops", "Please enter an amount.");
+      showDialog({
+        title: "Oops",
+        message: "Please enter an amount.",
+        type: "warning",
+      });
       return;
     }
 
@@ -258,8 +275,12 @@ export default function BudgetScreen() {
       setAddCategoryName("");
       setAddAmount("");
       setAddModalVisible(false);
-    } catch (error) {
-      Alert.alert("Error", "Failed to add category budget.");
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to add category budget.",
+        type: "error",
+      });
     }
   };
 

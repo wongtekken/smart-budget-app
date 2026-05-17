@@ -3,7 +3,6 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -24,6 +23,7 @@ import {
   where,
 } from "firebase/firestore";
 import { AppHeader } from "../components/app-header";
+import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -60,6 +60,7 @@ const shiftMonth = (month: string, offset: number) => {
 
 export default function TransactionsScreen() {
   const router = useRouter();
+  const { showConfirm, showDialog } = useAppDialog();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(getLocalMonthStr());
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -139,29 +140,26 @@ export default function TransactionsScreen() {
   };
 
   // 🚨 极其硬核：真实的删除逻辑
-  const handleDelete = () => {
-    Alert.alert(
-      "Delete Transaction",
-      "Are you sure you want to delete this record? This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive", // 在 iOS 上会让按钮变红
-          onPress: async () => {
-            try {
-              if (selectedTx) {
-                // 彻底从 Firebase 删除这条记录
-                await deleteDoc(doc(db, "transactions", selectedTx.id));
-                setActionMenuVisible(false); // 关闭菜单
-              }
-            } catch (error) {
-              Alert.alert("Error", "Failed to delete transaction.");
-            }
-          },
-        },
-      ],
-    );
+  const handleDelete = async () => {
+    const confirmed = await showConfirm({
+      title: "Delete Transaction",
+      message: "Are you sure you want to delete this record? This cannot be undone.",
+      confirmLabel: "Delete",
+      type: "error",
+    });
+
+    if (!confirmed || !selectedTx) return;
+
+    try {
+      await deleteDoc(doc(db, "transactions", selectedTx.id));
+      setActionMenuVisible(false);
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to delete transaction.",
+        type: "error",
+      });
+    }
   };
 
   const DetailRow = ({

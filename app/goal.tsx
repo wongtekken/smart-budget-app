@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -27,6 +26,7 @@ import {
   where,
 } from "firebase/firestore";
 import { AppHeader } from "../components/app-header";
+import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -59,6 +59,7 @@ const formatDate = (d: Date) => {
 };
 
 export default function GoalScreen() {
+  const { showConfirm, showDialog } = useAppDialog();
   const [searchQuery, setSearchQuery] = useState("");
 
   const [goals, setGoals] = useState<GoalType[]>([]);
@@ -168,11 +169,19 @@ export default function GoalScreen() {
     const trimmedTitle = newTitle.trim();
 
     if (!trimmedTitle) {
-      Alert.alert("Oops", "Please enter a goal title.");
+      showDialog({
+        title: "Oops",
+        message: "Please enter a goal title.",
+        type: "warning",
+      });
       return;
     }
     if (newType === "Target" && !newTargetAmount) {
-      Alert.alert("Oops", "Target goal requires a target amount.");
+      showDialog({
+        title: "Oops",
+        message: "Target goal requires a target amount.",
+        type: "warning",
+      });
       return;
     }
 
@@ -217,10 +226,11 @@ export default function GoalScreen() {
         );
 
         if (hasDuplicateCategory) {
-          Alert.alert(
-            "Duplicate Category",
-            `"${goalCategoryName}" already exists. Please use a different goal title.`,
-          );
+          showDialog({
+            title: "Duplicate Category",
+            message: `"${goalCategoryName}" already exists. Please use a different goal title.`,
+            type: "warning",
+          });
           return;
         }
 
@@ -245,43 +255,45 @@ export default function GoalScreen() {
       }
 
       setModalVisible(false);
-    } catch (error) {
-      Alert.alert("Error", "Failed to save goal.");
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to save goal.",
+        type: "error",
+      });
     }
   };
 
   // ==========================================
   // 🗑️ 核心操作：删除与连带清理
   // ==========================================
-  const handleDeleteGoal = (id: string, title: string) => {
-    Alert.alert(
-      "Delete Goal",
-      `Are you sure you want to delete "${title}"? This will also remove its associated budget category.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // 1. 删 Goal
-              await deleteDoc(doc(db, "goals", id));
-              // 2. 删对应的幽灵分类
-              const q = query(
-                collection(db, "categories"),
-                where("goalId", "==", id),
-              );
-              const snap = await getDocs(q);
-              snap.forEach(async (categoryDoc) => {
-                await deleteDoc(doc(db, "categories", categoryDoc.id));
-              });
-            } catch (e) {
-              console.error(e);
-            }
-          },
-        },
-      ],
-    );
+  const handleDeleteGoal = async (id: string, title: string) => {
+    const confirmed = await showConfirm({
+      title: "Delete Goal",
+      message: `Are you sure you want to delete "${title}"? This will also remove its associated budget category.`,
+      confirmLabel: "Delete",
+      type: "error",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, "goals", id));
+      const q = query(collection(db, "categories"), where("goalId", "==", id));
+      const snap = await getDocs(q);
+      await Promise.all(
+        snap.docs.map((categoryDoc) =>
+          deleteDoc(doc(db, "categories", categoryDoc.id)),
+        ),
+      );
+    } catch (e) {
+      console.error(e);
+      showDialog({
+        title: "Error",
+        message: "Failed to delete goal.",
+        type: "error",
+      });
+    }
   };
 
   const filteredGoals = goals.filter((g) =>
@@ -856,4 +868,3 @@ const styles = StyleSheet.create({
   },
   actionDivider: { height: 1, backgroundColor: palette.border },
 });
-

@@ -45,7 +45,7 @@ export default function LoginScreen() {
       await signInWithEmailAndPassword(auth, email, password);
       // 验证成功！门打开了，前往主页
       router.replace("/(tabs)");
-    } catch (error: any) {
+    } catch {
       // 如果密码错误或账号不存在，Firebase 会告诉你
       showDialog({
         title: "Login Failed",

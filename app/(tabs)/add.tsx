@@ -371,7 +371,7 @@ export default function AddTransactionScreen() {
           );
         }
       }
-    } catch (error) {
+    } catch {
       appAlert("Error", "Failed to parse text. Please try again.");
     } finally {
       setIsAiLoading(false);
@@ -528,7 +528,7 @@ export default function AddTransactionScreen() {
           formatDate(new Date()),
         );
         applyAiResultToForm(result, "voice");
-      } catch (error) {
+      } catch {
         appAlert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
       } finally {
         setAiMode(null);
@@ -550,7 +550,7 @@ export default function AddTransactionScreen() {
       setVoiceRecordingSeconds(0);
       setVoiceRecordingPanelVisible(true);
       audioRecorder.record();
-    } catch (error) {
+    } catch {
       setVoiceRecordingPanelVisible(false);
       appAlert("Voice Error", "Could not start recording. Please try again.");
     }
@@ -563,7 +563,7 @@ export default function AddTransactionScreen() {
       if (recorderState.isRecording) {
         await audioRecorder.stop();
       }
-    } catch (error) {
+    } catch {
       appAlert("Voice Error", "Could not cancel recording. Please try again.");
     } finally {
       setVoiceRecordingPanelVisible(false);
@@ -587,7 +587,7 @@ export default function AddTransactionScreen() {
       setVoiceModalVisible(false);
       setVoiceTranscript("");
       applyAiResultToForm(result, "voice");
-    } catch (error) {
+    } catch {
       appAlert("Voice Parse Error", "Failed to parse the transcript. Please try again.");
     } finally {
       setAiMode(null);

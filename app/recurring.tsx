@@ -11,7 +11,6 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -20,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { AppHeader } from "../components/app-header";
+import { useAppDialog } from "../components/app-dialog";
 import { formatCurrency, palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -42,6 +42,7 @@ const getStatusColor = (item: RecurringTransaction) => {
 };
 
 export default function RecurringScreen() {
+  const { showConfirm, showDialog } = useAppDialog();
   const [loading, setLoading] = useState(true);
   const [recurringItems, setRecurringItems] = useState<RecurringTransaction[]>(
     [],
@@ -110,29 +111,33 @@ export default function RecurringScreen() {
         updatedAt: new Date(),
       });
     } catch {
-      Alert.alert("Error", "Failed to update recurring transaction.");
+      showDialog({
+        title: "Error",
+        message: "Failed to update recurring transaction.",
+        type: "error",
+      });
     }
   };
 
-  const deleteRecurring = (item: RecurringTransaction) => {
-    Alert.alert(
-      "Delete Recurring Transaction",
-      `Delete "${item.category || item.note || "Recurring transaction"}"? This will not remove transactions already created.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, "recurring_transactions", item.id));
-            } catch {
-              Alert.alert("Error", "Failed to delete recurring transaction.");
-            }
-          },
-        },
-      ],
-    );
+  const deleteRecurring = async (item: RecurringTransaction) => {
+    const confirmed = await showConfirm({
+      title: "Delete Recurring Transaction",
+      message: `Delete "${item.category || item.note || "Recurring transaction"}"? This will not remove transactions already created.`,
+      confirmLabel: "Delete",
+      type: "error",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, "recurring_transactions", item.id));
+    } catch {
+      showDialog({
+        title: "Error",
+        message: "Failed to delete recurring transaction.",
+        type: "error",
+      });
+    }
   };
 
   return (

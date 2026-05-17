@@ -28,6 +28,7 @@ type DialogAction = {
 type DialogOptions = {
   actions?: DialogAction[];
   message: string;
+  onCancel?: () => void;
   title: string;
   type?: DialogType;
 };
@@ -79,7 +80,14 @@ const dialogMeta: Record<
 export function AppDialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogOptions | null>(null);
 
-  const closeDialog = useCallback(() => setDialog(null), []);
+  const closeDialog = useCallback((runCancel = true) => {
+    setDialog((current) => {
+      if (runCancel) {
+        current?.onCancel?.();
+      }
+      return null;
+    });
+  }, []);
 
   const showDialog = useCallback((options: DialogOptions) => {
     setDialog({
@@ -108,6 +116,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
           title,
           message,
           type,
+          onCancel: () => resolve(false),
           actions: [
             {
               label: cancelLabel,
@@ -140,9 +149,9 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
         animationType="fade"
         transparent
         visible={Boolean(dialog)}
-        onRequestClose={closeDialog}
+        onRequestClose={() => closeDialog()}
       >
-        <Pressable style={styles.overlay} onPress={closeDialog}>
+        <Pressable style={styles.overlay} onPress={() => closeDialog()}>
           <Pressable style={styles.card} onPress={(event) => event.stopPropagation()}>
             <View style={[styles.iconWrap, { backgroundColor: meta.softColor }]}>
               <Ionicons name={meta.icon} size={34} color={meta.color} />
@@ -163,7 +172,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
                     ]}
                     activeOpacity={0.85}
                     onPress={() => {
-                      closeDialog();
+                      closeDialog(false);
                       action.onPress?.();
                     }}
                   >
