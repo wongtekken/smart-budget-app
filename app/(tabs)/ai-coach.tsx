@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { AppHeader } from "../../components/app-header";
@@ -75,6 +76,9 @@ export default function AiCoachScreen() {
   const [coachResponse, setCoachResponse] = useState<FinancialCoachResponse | null>(null);
   const [coachError, setCoachError] = useState("");
   const [coachLoading, setCoachLoading] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<
+    "coach" | "review" | "patterns" | "categories" | "actions" | null
+  >(null);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -162,6 +166,15 @@ export default function AiCoachScreen() {
     aiInsights.savingOpportunities.length +
     aiInsights.underspentRecommendations.length +
     aiInsights.goalRecommendations.length;
+  const primaryAction =
+    coachResponse?.recommendations[0] ||
+    coachCards[0]?.description ||
+    aiInsights.budgetTransfers[0]?.message ||
+    "Keep tracking transactions to strengthen your personal spending baseline.";
+  const primaryNotice =
+    coachResponse?.notices[0] ||
+    insightCards[0]?.description ||
+    "No urgent abnormal pattern is visible right now.";
 
   const coachPayload = useMemo(
     () => ({
@@ -214,6 +227,40 @@ export default function AiCoachScreen() {
     };
   }, [coachPayload, currentMonth, purchaseSimulation, transactions.length]);
 
+  const toggleSection = (
+    section: "coach" | "review" | "patterns" | "categories" | "actions",
+  ) => {
+    setExpandedSection((current) => (current === section ? null : section));
+  };
+
+  const SectionToggle = ({
+    count,
+    section,
+    title,
+  }: {
+    count?: number;
+    section: "coach" | "review" | "patterns" | "categories" | "actions";
+    title: string;
+  }) => {
+    const expanded = expandedSection === section;
+
+    return (
+      <TouchableOpacity style={styles.sectionToggle} onPress={() => toggleSection(section)}>
+        <View>
+          <Text style={styles.sectionToggleTitle}>{title}</Text>
+          {typeof count === "number" ? (
+            <Text style={styles.sectionToggleMeta}>{count} items</Text>
+          ) : null}
+        </View>
+        <Ionicons
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={22}
+          color={palette.textMuted}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -227,14 +274,15 @@ export default function AiCoachScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="sparkles" size={28} color="#FFF" />
+          <View style={styles.heroHeader}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="sparkles" size={26} color="#FFF" />
+            </View>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>AI Financial Coach</Text>
+              <Text style={styles.heroSubtitle}>{currentMonth}</Text>
+            </View>
           </View>
-          <Text style={styles.heroTitle}>Personal Financial Intelligence</Text>
-          <Text style={styles.heroSubtitle}>
-            Detects spending shifts, budget risks, saving chances, and purchase impact from your
-            own financial pattern.
-          </Text>
           <View style={styles.statusGrid}>
             <View style={styles.statusItem}>
               <Text style={styles.statusValue}>{highRiskCount}</Text>
@@ -252,7 +300,6 @@ export default function AiCoachScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Gemini Financial Coach</Text>
           <View style={styles.geminiCard}>
             <View style={styles.geminiHeader}>
               <View style={styles.geminiIcon}>
@@ -285,104 +332,40 @@ export default function AiCoachScreen() {
               </Text>
             )}
 
-            {coachResponse?.notices.length ? (
-              <>
-                <Text style={styles.geminiSubTitle}>Spending notices</Text>
-                {coachResponse.notices.map((item, index) => (
-                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
-                    {index + 1}. {item}
-                  </Text>
-                ))}
-              </>
-            ) : null}
-
-            {coachResponse?.recommendations.length ? (
-              <>
-                <Text style={styles.geminiSubTitle}>Recommended actions</Text>
-                {coachResponse.recommendations.map((item, index) => (
-                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
-                    {index + 1}. {item}
-                  </Text>
-                ))}
-              </>
-            ) : null}
-
-            {coachResponse?.nextMonthActions.length ? (
-              <>
-                <Text style={styles.geminiSubTitle}>Next month</Text>
-                {coachResponse.nextMonthActions.map((item, index) => (
-                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
-                    {index + 1}. {item}
-                  </Text>
-                ))}
-              </>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Analytical Review</Text>
-          <View style={styles.reviewCard}>
-            {aiInsights.monthlyReview.map((item, index) => (
-              <View key={`${item}-${index}`} style={styles.reviewLine}>
-                <Text style={styles.reviewNumber}>{index + 1}</Text>
-                <Text style={styles.reviewText}>{item}</Text>
+            <View style={styles.priorityCard}>
+              <View style={styles.priorityIcon}>
+                <Ionicons name="flash" size={18} color={palette.primary} />
               </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>AI Insight Engine</Text>
-          {insightCards.length > 0 ? (
-            insightCards.map((item, index) => (
-              <InsightCard key={`${item.title}-${index}`} {...item} />
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              No abnormal pattern detected yet. More transaction history will improve the personal
-              baseline.
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Category Behavior</Text>
-          {aiInsights.categoryBehaviors.slice(0, 6).map((item) => (
-            <View key={item.category} style={styles.behaviorRow}>
-              <View style={styles.behaviorCopy}>
-                <Text style={styles.behaviorCategory}>{item.category}</Text>
-                <Text style={styles.behaviorDescription}>{item.description}</Text>
+              <View style={styles.priorityCopy}>
+                <Text style={styles.priorityLabel}>Priority action</Text>
+                <Text style={styles.priorityText} numberOfLines={3}>
+                  {primaryAction}
+                </Text>
               </View>
-              <Text style={styles.behaviorTag}>{item.behavior}</Text>
             </View>
-          ))}
+          </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>AI Financial Coach</Text>
-          {coachCards.length > 0 ? (
-            coachCards.map((item, index) => (
-              <InsightCard key={`${item.title}-${index}`} {...item} />
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              No urgent action is needed. Keep recording transactions for stronger guidance.
-            </Text>
-          )}
-        </View>
-
-        {aiInsights.budgetTransfers.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Smart Budget Reallocation</Text>
-            {aiInsights.budgetTransfers.map((item) => (
-              <View key={`${item.fromCategory}-${item.toCategory}`} style={styles.transferCard}>
-                <Ionicons name="swap-horizontal" size={22} color={palette.primary} />
-                <Text style={styles.transferText}>{item.message}</Text>
-              </View>
-            ))}
+          <Text style={styles.sectionTitle}>Current Signal</Text>
+          <View style={styles.signalCard}>
+            <View style={styles.signalIcon}>
+              <Ionicons
+                name={highRiskCount > 0 ? "warning" : "shield-checkmark"}
+                size={22}
+                color={highRiskCount > 0 ? palette.warning : palette.success}
+              />
+            </View>
+            <View style={styles.signalCopy}>
+              <Text style={styles.signalTitle}>
+                {highRiskCount > 0 ? "Attention needed" : "No urgent risk"}
+              </Text>
+              <Text style={styles.signalText} numberOfLines={3}>
+                {primaryNotice}
+              </Text>
+            </View>
           </View>
-        )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>What-If Purchase Simulation</Text>
@@ -409,6 +392,132 @@ export default function AiCoachScreen() {
             ) : null}
           </View>
         </View>
+
+        <View style={styles.section}>
+          <SectionToggle
+            count={
+              (coachResponse?.notices.length || 0) +
+              (coachResponse?.recommendations.length || 0) +
+              (coachResponse?.nextMonthActions.length || 0)
+            }
+            section="coach"
+            title="Gemini coach details"
+          />
+          {expandedSection === "coach" && (
+            <View style={styles.detailPanel}>
+              {coachResponse?.notices.length ? (
+                <>
+                  <Text style={styles.geminiSubTitle}>Spending notices</Text>
+                  {coachResponse.notices.map((item, index) => (
+                    <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                      {index + 1}. {item}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
+
+              {coachResponse?.recommendations.length ? (
+                <>
+                  <Text style={styles.geminiSubTitle}>Recommended actions</Text>
+                  {coachResponse.recommendations.map((item, index) => (
+                    <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                      {index + 1}. {item}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
+
+              {coachResponse?.nextMonthActions.length ? (
+                <>
+                  <Text style={styles.geminiSubTitle}>Next month</Text>
+                  {coachResponse.nextMonthActions.map((item, index) => (
+                    <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                      {index + 1}. {item}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionToggle count={aiInsights.monthlyReview.length} section="review" title="Analytical review" />
+          {expandedSection === "review" && (
+            <View style={styles.reviewCard}>
+              {aiInsights.monthlyReview.map((item, index) => (
+                <View key={`${item}-${index}`} style={styles.reviewLine}>
+                  <Text style={styles.reviewNumber}>{index + 1}</Text>
+                  <Text style={styles.reviewText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionToggle count={insightCards.length} section="patterns" title="Insight engine details" />
+          {expandedSection === "patterns" && (
+            <>
+              {insightCards.length > 0 ? (
+                insightCards.map((item, index) => (
+                  <InsightCard key={`${item.title}-${index}`} {...item} />
+                ))
+              ) : (
+                <Text style={styles.emptyText}>
+                  No abnormal pattern detected yet. More transaction history will improve the
+                  personal baseline.
+                </Text>
+              )}
+            </>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionToggle
+            count={aiInsights.categoryBehaviors.length}
+            section="categories"
+            title="Category behavior"
+          />
+          {expandedSection === "categories" &&
+            aiInsights.categoryBehaviors.slice(0, 6).map((item) => (
+              <View key={item.category} style={styles.behaviorRow}>
+                <View style={styles.behaviorCopy}>
+                  <Text style={styles.behaviorCategory}>{item.category}</Text>
+                  <Text style={styles.behaviorDescription}>{item.description}</Text>
+                </View>
+                <Text style={styles.behaviorTag}>{item.behavior}</Text>
+              </View>
+            ))}
+        </View>
+
+        <View style={styles.section}>
+          <SectionToggle
+            count={coachCards.length + aiInsights.budgetTransfers.length}
+            section="actions"
+            title="Budget actions"
+          />
+          {expandedSection === "actions" && (
+            <>
+              {coachCards.length > 0 ? (
+                coachCards.map((item, index) => (
+                  <InsightCard key={`${item.title}-${index}`} {...item} />
+                ))
+              ) : (
+                <Text style={styles.emptyText}>
+                  No urgent action is needed. Keep recording transactions for stronger guidance.
+                </Text>
+              )}
+
+              {aiInsights.budgetTransfers.map((item) => (
+                <View key={`${item.fromCategory}-${item.toCategory}`} style={styles.transferCard}>
+                  <Ionicons name="swap-horizontal" size={22} color={palette.primary} />
+                  <Text style={styles.transferText}>{item.message}</Text>
+                </View>
+              ))}
+            </>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -429,6 +538,10 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     ...shadow.card,
   },
+  heroHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
   heroIcon: {
     alignItems: "center",
     backgroundColor: palette.primary,
@@ -438,9 +551,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     width: 48,
   },
+  heroCopy: {
+    flex: 1,
+    marginLeft: 12,
+  },
   heroTitle: {
     color: palette.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
   },
   heroSubtitle: {
@@ -448,7 +565,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 21,
-    marginTop: 8,
+    marginTop: 3,
   },
   statusGrid: {
     flexDirection: "row",
@@ -567,6 +684,103 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 20,
     marginBottom: 4,
+  },
+  priorityCard: {
+    alignItems: "flex-start",
+    backgroundColor: palette.primarySoft,
+    borderRadius: radius.lg,
+    flexDirection: "row",
+    marginTop: 14,
+    padding: 12,
+  },
+  priorityIcon: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 32,
+  },
+  priorityCopy: {
+    flex: 1,
+  },
+  priorityLabel: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  priorityText: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 19,
+  },
+  signalCard: {
+    alignItems: "flex-start",
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    padding: 14,
+    ...shadow.subtle,
+  },
+  signalIcon: {
+    alignItems: "center",
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 36,
+  },
+  signalCopy: {
+    flex: 1,
+  },
+  signalTitle: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  signalText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  sectionToggle: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 14,
+    ...shadow.subtle,
+  },
+  sectionToggleTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  sectionToggleMeta: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  detailPanel: {
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 14,
   },
   insightCard: {
     alignItems: "stretch",
