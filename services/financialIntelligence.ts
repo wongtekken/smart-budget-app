@@ -1,0 +1,688 @@
+export type TransactionRecord = {
+  id?: string;
+  amount?: number | string;
+  category?: string;
+  date?: string;
+  note?: string;
+  recurring?: string;
+  type?: string;
+};
+
+export type MonthlyBudgetRecord = {
+  id?: string;
+  allocations?: Record<string, number>;
+  month?: string;
+  userId?: string;
+};
+
+export type GoalRecord = {
+  id?: string;
+  title?: string;
+  targetAmount?: number;
+  type?: string;
+};
+
+export type RecurringRecord = {
+  amount?: number | string;
+  category?: string;
+  frequency?: string;
+  isActive?: boolean;
+  type?: string;
+};
+
+export type InsightSeverity = "info" | "success" | "warning" | "danger";
+
+export type InsightItem = {
+  amount?: number;
+  category?: string;
+  description: string;
+  impact?: number;
+  metric?: string;
+  severity: InsightSeverity;
+  title: string;
+};
+
+export type CategoryBehavior =
+  | "Stable Spending"
+  | "Growing Spending"
+  | "Weekend-Sensitive Spending"
+  | "Risk Category";
+
+export type CategoryBehaviorItem = {
+  averageMonthly: number;
+  behavior: CategoryBehavior;
+  category: string;
+  description: string;
+};
+
+export type BudgetTransferSuggestion = {
+  amount: number;
+  fromCategory: string;
+  message: string;
+  toCategory: string;
+};
+
+export type WhatIfSimulation = {
+  message: string;
+  projectedBalance: number;
+  severity: InsightSeverity;
+};
+
+export type FinancialIntelligenceResult = {
+  abnormalSpending: InsightItem[];
+  budgetTransfers: BudgetTransferSuggestion[];
+  categoryBehaviors: CategoryBehaviorItem[];
+  goalRecommendations: InsightItem[];
+  lifestyleChanges: InsightItem[];
+  monthlyReview: string[];
+  reactiveAlerts: InsightItem[];
+  savingOpportunities: InsightItem[];
+  underspentRecommendations: InsightItem[];
+  weekendPatterns: InsightItem[];
+  whatIfSimulation: (purchaseAmount: number, purchaseLabel?: string) => WhatIfSimulation;
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const BASELINE_MONTHS = 3;
+
+const normalizeType = (type?: string) => String(type || "").toLowerCase();
+
+const getParentCategory = (category?: string) =>
+  category ? category.split(" - ")[0] : "Uncategorized";
+
+const getAmount = (value?: number | string) => Number(value) || 0;
+
+export const getLocalDateStr = (date = new Date()) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+};
+
+export const getLocalMonthStr = (date = new Date()) => getLocalDateStr(date).slice(0, 7);
+
+const parseDate = (value?: string) => {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const shiftMonth = (month: string, offset: number) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return getLocalMonthStr(new Date(year, monthIndex - 1 + offset, 1));
+};
+
+const getMonthRange = (currentMonth: string, count: number) =>
+  Array.from({ length: count }, (_, index) => shiftMonth(currentMonth, -index - 1));
+
+const sumValues = (values: number[]) => values.reduce((sum, value) => sum + value, 0);
+
+const average = (values: number[]) => (values.length > 0 ? sumValues(values) / values.length : 0);
+
+const standardDeviation = (values: number[]) => {
+  const mean = average(values);
+  if (values.length === 0) return 0;
+  const variance = average(values.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+};
+
+const getExpenseTransactions = (transactions: TransactionRecord[]) =>
+  transactions.filter((tx) => normalizeType(tx.type) === "expense");
+
+const getSpendByCategoryForMonth = (transactions: TransactionRecord[], month: string) => {
+  const byCategory: Record<string, number> = {};
+
+  getExpenseTransactions(transactions).forEach((tx) => {
+    if (!String(tx.date || "").startsWith(month)) return;
+    const category = getParentCategory(tx.category);
+    byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
+  });
+
+  return byCategory;
+};
+
+const getTotalForMonth = (transactions: TransactionRecord[], month: string, type: string) =>
+  transactions.reduce((sum, tx) => {
+    if (!String(tx.date || "").startsWith(month) || normalizeType(tx.type) !== type) {
+      return sum;
+    }
+
+    return sum + getAmount(tx.amount);
+  }, 0);
+
+const getBudgetForMonth = (budgets: MonthlyBudgetRecord[], month: string) =>
+  budgets.find((budget) => budget.month === month)?.allocations || {};
+
+const getLastDaysSpendByCategory = (
+  transactions: TransactionRecord[],
+  endDate: Date,
+  days: number,
+) => {
+  const startTime = endDate.getTime() - days * MS_PER_DAY;
+  const byCategory: Record<string, number> = {};
+
+  getExpenseTransactions(transactions).forEach((tx) => {
+    const parsed = parseDate(tx.date);
+    if (!parsed || parsed.getTime() < startTime || parsed.getTime() > endDate.getTime()) {
+      return;
+    }
+
+    const category = getParentCategory(tx.category);
+    byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
+  });
+
+  return byCategory;
+};
+
+const getPriorDaysSpendByCategory = (
+  transactions: TransactionRecord[],
+  endDate: Date,
+  recentDays: number,
+  priorDays: number,
+) => {
+  const recentStartTime = endDate.getTime() - recentDays * MS_PER_DAY;
+  const priorStartTime = recentStartTime - priorDays * MS_PER_DAY;
+  const byCategory: Record<string, number> = {};
+
+  getExpenseTransactions(transactions).forEach((tx) => {
+    const parsed = parseDate(tx.date);
+    if (!parsed || parsed.getTime() < priorStartTime || parsed.getTime() >= recentStartTime) {
+      return;
+    }
+
+    const category = getParentCategory(tx.category);
+    byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
+  });
+
+  return byCategory;
+};
+
+const getBudgetProgress = (
+  currentSpendByCategory: Record<string, number>,
+  currentAllocations: Record<string, number>,
+) =>
+  Object.keys({ ...currentSpendByCategory, ...currentAllocations }).map((category) => {
+    const spent = currentSpendByCategory[category] || 0;
+    const allocated = Number(currentAllocations[category] || 0);
+    const progress = allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
+
+    return { allocated, category, progress, remaining: allocated - spent, spent };
+  });
+
+const getMonthlySeriesByCategory = (
+  transactions: TransactionRecord[],
+  months: string[],
+) => {
+  const categories = new Set<string>();
+  const monthlyMaps = months.map((month) => getSpendByCategoryForMonth(transactions, month));
+
+  monthlyMaps.forEach((monthMap) => {
+    Object.keys(monthMap).forEach((category) => categories.add(category));
+  });
+
+  const series: Record<string, number[]> = {};
+  categories.forEach((category) => {
+    series[category] = monthlyMaps.map((monthMap) => monthMap[category] || 0);
+  });
+
+  return series;
+};
+
+const createAbnormalSpending = (
+  currentSpendByCategory: Record<string, number>,
+  baselineSeries: Record<string, number[]>,
+) =>
+  Object.keys(currentSpendByCategory)
+    .map((category) => {
+      const baseline = average(baselineSeries[category] || []);
+      const current = currentSpendByCategory[category] || 0;
+      const increase = current - baseline;
+      const ratio = baseline > 0 ? current / baseline : current > 0 ? 99 : 0;
+
+      if (baseline < 20 || increase < 25 || ratio < 1.6) return null;
+
+      return {
+        amount: current,
+        category,
+        description: `${category} is RM ${increase.toFixed(0)} above your personal monthly baseline.`,
+        impact: increase,
+        metric: `+${Math.round((ratio - 1) * 100)}% vs baseline`,
+        severity: "danger" as const,
+        title: "Abnormal spending detected",
+      };
+    })
+    .filter(Boolean) as InsightItem[];
+
+const createWeekendPatterns = (transactions: TransactionRecord[]) => {
+  const stats: Record<
+    string,
+    { weekdayAmount: number; weekdayDays: Set<string>; weekendAmount: number; weekendDays: Set<string> }
+  > = {};
+
+  getExpenseTransactions(transactions).forEach((tx) => {
+    const parsed = parseDate(tx.date);
+    if (!parsed) return;
+    const category = getParentCategory(tx.category);
+    const day = parsed.getDay();
+    const isWeekend = day === 0 || day === 6;
+
+    stats[category] ||= {
+      weekdayAmount: 0,
+      weekdayDays: new Set<string>(),
+      weekendAmount: 0,
+      weekendDays: new Set<string>(),
+    };
+
+    if (isWeekend) {
+      stats[category].weekendAmount += getAmount(tx.amount);
+      stats[category].weekendDays.add(tx.date || "");
+    } else {
+      stats[category].weekdayAmount += getAmount(tx.amount);
+      stats[category].weekdayDays.add(tx.date || "");
+    }
+  });
+
+  return Object.keys(stats)
+    .map((category) => {
+      const item = stats[category];
+      const weekendAvg = item.weekendAmount / Math.max(item.weekendDays.size, 1);
+      const weekdayAvg = item.weekdayAmount / Math.max(item.weekdayDays.size, 1);
+      const ratio = weekdayAvg > 0 ? weekendAvg / weekdayAvg : weekendAvg > 20 ? 99 : 0;
+
+      if (item.weekendAmount < 40 || ratio < 1.35) return null;
+
+      return {
+        amount: item.weekendAmount,
+        category,
+        description: `${category} spending is noticeably higher on weekends than weekdays.`,
+        impact: weekendAvg - weekdayAvg,
+        metric: `${ratio >= 99 ? "High" : `${ratio.toFixed(1)}x`} weekend intensity`,
+        severity: "warning" as const,
+        title: "Weekend-sensitive pattern",
+      };
+    })
+    .filter(Boolean) as InsightItem[];
+};
+
+const createLifestyleChanges = (transactions: TransactionRecord[], now: Date) => {
+  const recent = getLastDaysSpendByCategory(transactions, now, 30);
+  const prior = getPriorDaysSpendByCategory(transactions, now, 30, 90);
+  const categories = new Set([...Object.keys(recent), ...Object.keys(prior)]);
+
+  return Array.from(categories)
+    .map((category) => {
+      const recentDaily = (recent[category] || 0) / 30;
+      const priorDaily = (prior[category] || 0) / 90;
+      const diff = recentDaily - priorDaily;
+      const ratio = priorDaily > 0 ? recentDaily / priorDaily : recentDaily > 3 ? 99 : 1;
+
+      if (Math.abs(diff) < 2 || (ratio < 1.5 && ratio > 0.55)) return null;
+
+      const direction = diff > 0 ? "increased" : "decreased";
+      return {
+        amount: recent[category] || 0,
+        category,
+        description: `${category} has ${direction} compared with your earlier 90-day pattern.`,
+        impact: diff * 30,
+        metric: `${diff > 0 ? "+" : ""}RM ${(diff * 30).toFixed(0)} monthly pace`,
+        severity: diff > 0 ? ("warning" as const) : ("info" as const),
+        title: "Possible lifestyle adjustment",
+      };
+    })
+    .filter(Boolean) as InsightItem[];
+};
+
+const createCategoryBehaviors = (
+  baselineSeries: Record<string, number[]>,
+  abnormalSpending: InsightItem[],
+  weekendPatterns: InsightItem[],
+  budgetProgress: ReturnType<typeof getBudgetProgress>,
+) => {
+  const categories = new Set([
+    ...Object.keys(baselineSeries),
+    ...abnormalSpending.map((item) => item.category || ""),
+    ...weekendPatterns.map((item) => item.category || ""),
+    ...budgetProgress.map((item) => item.category),
+  ]);
+
+  return Array.from(categories)
+    .filter(Boolean)
+    .map((category) => {
+      const series = baselineSeries[category] || [];
+      const avg = average(series);
+      const cv = avg > 0 ? standardDeviation(series) / avg : 0;
+      const isAbnormal = abnormalSpending.some((item) => item.category === category);
+      const isWeekend = weekendPatterns.some((item) => item.category === category);
+      const progress = budgetProgress.find((item) => item.category === category)?.progress || 0;
+      const firstHalf = average(series.slice(Math.ceil(series.length / 2)));
+      const secondHalf = average(series.slice(0, Math.ceil(series.length / 2)));
+      const isGrowing = secondHalf > firstHalf * 1.25 && secondHalf - firstHalf > 20;
+
+      if (progress >= 0.85 || isAbnormal) {
+        return {
+          averageMonthly: avg,
+          behavior: "Risk Category" as const,
+          category,
+          description: `${category} needs attention because spending is close to budget or above baseline.`,
+        };
+      }
+
+      if (isWeekend) {
+        return {
+          averageMonthly: avg,
+          behavior: "Weekend-Sensitive Spending" as const,
+          category,
+          description: `${category} tends to rise during weekends.`,
+        };
+      }
+
+      if (isGrowing) {
+        return {
+          averageMonthly: avg,
+          behavior: "Growing Spending" as const,
+          category,
+          description: `${category} is trending upward compared with earlier months.`,
+        };
+      }
+
+      return {
+        averageMonthly: avg,
+        behavior: "Stable Spending" as const,
+        category,
+        description:
+          cv <= 0.3 ? `${category} is relatively consistent.` : `${category} varies, but no major risk is detected.`,
+      };
+    })
+    .sort((a, b) => {
+      const rank: Record<CategoryBehavior, number> = {
+        "Risk Category": 0,
+        "Growing Spending": 1,
+        "Weekend-Sensitive Spending": 2,
+        "Stable Spending": 3,
+      };
+      return rank[a.behavior] - rank[b.behavior] || b.averageMonthly - a.averageMonthly;
+    });
+};
+
+const createBudgetTransfers = (
+  currentSpendByCategory: Record<string, number>,
+  currentAllocations: Record<string, number>,
+) => {
+  const progress = getBudgetProgress(currentSpendByCategory, currentAllocations);
+  const overspent = progress.filter((item) => item.allocated > 0 && item.remaining < 0);
+  const unused = progress
+    .filter((item) => item.allocated > 0 && item.remaining > item.allocated * 0.4)
+    .sort((a, b) => b.remaining - a.remaining);
+
+  const suggestions: BudgetTransferSuggestion[] = [];
+  overspent.forEach((target) => {
+    const source = unused.find((item) => item.category !== target.category && item.remaining > 0);
+    if (!source) return;
+    const amount = Math.min(Math.abs(target.remaining), source.remaining * 0.5);
+    if (amount < 10) return;
+
+    suggestions.push({
+      amount,
+      fromCategory: source.category,
+      message: `${target.category} is over budget. You can transfer RM ${amount.toFixed(0)} from ${source.category}, which still has unused funds.`,
+      toCategory: target.category,
+    });
+  });
+
+  return suggestions;
+};
+
+const createUnderspentRecommendations = (
+  budgets: MonthlyBudgetRecord[],
+  transactions: TransactionRecord[],
+  currentMonth: string,
+) => {
+  const months = getMonthRange(currentMonth, BASELINE_MONTHS);
+  const byCategory: Record<string, { allocated: number[]; spent: number[] }> = {};
+
+  months.forEach((month) => {
+    const budget = getBudgetForMonth(budgets, month);
+    const spent = getSpendByCategoryForMonth(transactions, month);
+    Object.keys({ ...budget, ...spent }).forEach((category) => {
+      byCategory[category] ||= { allocated: [], spent: [] };
+      byCategory[category].allocated.push(Number(budget[category] || 0));
+      byCategory[category].spent.push(spent[category] || 0);
+    });
+  });
+
+  return Object.keys(byCategory)
+    .map((category) => {
+      const allocated = byCategory[category].allocated;
+      const spent = byCategory[category].spent;
+      const validMonths = allocated.filter((value) => value > 0).length;
+      if (validMonths < 3) return null;
+
+      const underspentEveryMonth = allocated.every(
+        (budget, index) => budget > 0 && spent[index] <= budget * 0.7,
+      );
+      const avgUnused = average(allocated.map((budget, index) => Math.max(budget - spent[index], 0)));
+
+      if (!underspentEveryMonth || avgUnused < 15) return null;
+
+      return {
+        amount: avgUnused,
+        category,
+        description: `${category} has stayed at least 30% under budget for 3 months. Consider lowering it and moving around RM ${avgUnused.toFixed(0)} elsewhere.`,
+        impact: avgUnused,
+        metric: `RM ${avgUnused.toFixed(0)} average unused`,
+        severity: "success" as const,
+        title: "Consistently underspent budget",
+      };
+    })
+    .filter(Boolean) as InsightItem[];
+};
+
+const createSavingOpportunities = (
+  currentSpendByCategory: Record<string, number>,
+  currentAllocations: Record<string, number>,
+  recurring: RecurringRecord[],
+) => {
+  const recurringCategories = new Set(
+    recurring
+      .filter((item) => item.isActive !== false && normalizeType(item.type) === "expense")
+      .map((item) => getParentCategory(item.category)),
+  );
+
+  return Object.keys(currentSpendByCategory)
+    .filter((category) => !recurringCategories.has(category))
+    .map((category) => {
+      const spent = currentSpendByCategory[category] || 0;
+      const allocated = Number(currentAllocations[category] || 0);
+      const saving = Math.min(spent * 0.2, allocated > 0 ? Math.max(spent - allocated * 0.7, 0) : spent * 0.15);
+
+      if (saving < 15) return null;
+
+      return {
+        amount: saving,
+        category,
+        description: `Reducing ${category} by about 20% could save around RM ${saving.toFixed(0)} this month.`,
+        impact: saving,
+        metric: `Potential RM ${saving.toFixed(0)} saving`,
+        severity: "success" as const,
+        title: "Saving opportunity",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b?.impact || 0) - (a?.impact || 0))
+    .slice(0, 3) as InsightItem[];
+};
+
+const createGoalRecommendations = (
+  currentSpendByCategory: Record<string, number>,
+  currentAllocations: Record<string, number>,
+  goals: GoalRecord[],
+  now: Date,
+) => {
+  const day = now.getDate();
+  const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  if (goals.length === 0 || totalDays - day > 5) return [];
+
+  const unused = Object.keys(currentAllocations)
+    .map((category) => ({
+      category,
+      remaining: Number(currentAllocations[category] || 0) - (currentSpendByCategory[category] || 0),
+    }))
+    .filter((item) => item.remaining > Number(currentAllocations[item.category] || 0) * 0.4)
+    .sort((a, b) => b.remaining - a.remaining);
+
+  const goal = goals[0];
+  const source = unused.find((item) => !item.category.startsWith("\uD83C\uDFAF"));
+  if (!source || source.remaining < 10) return [];
+
+  return [
+    {
+      amount: source.remaining,
+      category: source.category,
+      description: `You still have RM ${source.remaining.toFixed(0)} unused in ${source.category}. Consider moving part of it to your ${goal.title || "saving"} goal before the cycle ends.`,
+      impact: source.remaining,
+      metric: "Goal-aware recommendation",
+      severity: "success" as const,
+      title: "Move unused funds to savings",
+    },
+  ];
+};
+
+export const createReactiveBudgetAlert = (
+  transaction: TransactionRecord,
+  transactions: TransactionRecord[],
+  currentAllocations: Record<string, number>,
+) => {
+  if (normalizeType(transaction.type) !== "expense") return null;
+
+  const category = getParentCategory(transaction.category);
+  const txMonth = String(transaction.date || getLocalDateStr()).slice(0, 7);
+  const spent = getSpendByCategoryForMonth(transactions, txMonth)[category] || 0;
+  const allocated = Number(currentAllocations[category] || 0);
+
+  if (allocated <= 0) {
+    return {
+      amount: getAmount(transaction.amount),
+      category,
+      description: `${category} has no budget set. Add a budget so future spending can be tracked more accurately.`,
+      metric: "Unbudgeted category",
+      severity: "warning" as const,
+      title: "Reactive budget alert",
+    };
+  }
+
+  const progress = spent / allocated;
+  if (progress < 0.8) return null;
+
+  return {
+    amount: spent,
+    category,
+    description:
+      progress >= 1
+        ? `This transaction pushes ${category} over budget at ${Math.round(progress * 100)}%. Consider limiting this category or transferring unused budget.`
+        : `This transaction puts ${category} at ${Math.round(progress * 100)}% of its budget. Spend carefully for the rest of the month.`,
+    metric: `${Math.round(progress * 100)}% budget used`,
+    severity: progress >= 1 ? ("danger" as const) : ("warning" as const),
+    title: "Reactive budget alert",
+  };
+};
+
+export const buildFinancialIntelligence = ({
+  budgets,
+  currentAllocations,
+  goals,
+  now = new Date(),
+  recurring,
+  transactions,
+}: {
+  budgets: MonthlyBudgetRecord[];
+  currentAllocations: Record<string, number>;
+  goals: GoalRecord[];
+  now?: Date;
+  recurring: RecurringRecord[];
+  transactions: TransactionRecord[];
+}): FinancialIntelligenceResult => {
+  const currentMonth = getLocalMonthStr(now);
+  const baselineMonths = getMonthRange(currentMonth, BASELINE_MONTHS);
+  const currentSpendByCategory = getSpendByCategoryForMonth(transactions, currentMonth);
+  const baselineSeries = getMonthlySeriesByCategory(transactions, baselineMonths);
+  const abnormalSpending = createAbnormalSpending(currentSpendByCategory, baselineSeries);
+  const weekendPatterns = createWeekendPatterns(transactions);
+  const lifestyleChanges = createLifestyleChanges(transactions, now);
+  const budgetProgress = getBudgetProgress(currentSpendByCategory, currentAllocations);
+  const reactiveAlerts = budgetProgress
+    .filter((item) => item.allocated > 0 && item.progress >= 0.8)
+    .map((item) => ({
+      amount: item.spent,
+      category: item.category,
+      description:
+        item.progress >= 1
+          ? `${item.category} is over budget by RM ${Math.abs(item.remaining).toFixed(0)}.`
+          : `${item.category} has used ${Math.round(item.progress * 100)}% of its budget.`,
+      impact: item.remaining,
+      metric: `${Math.round(item.progress * 100)}% used`,
+      severity: item.progress >= 1 ? ("danger" as const) : ("warning" as const),
+      title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
+    }));
+
+  const budgetTransfers = createBudgetTransfers(currentSpendByCategory, currentAllocations);
+  const underspentRecommendations = createUnderspentRecommendations(budgets, transactions, currentMonth);
+  const savingOpportunities = createSavingOpportunities(
+    currentSpendByCategory,
+    currentAllocations,
+    recurring,
+  );
+  const goalRecommendations = createGoalRecommendations(
+    currentSpendByCategory,
+    currentAllocations,
+    goals,
+    now,
+  );
+  const categoryBehaviors = createCategoryBehaviors(
+    baselineSeries,
+    abnormalSpending,
+    weekendPatterns,
+    budgetProgress,
+  );
+
+  const currentIncome = getTotalForMonth(transactions, currentMonth, "income");
+  const currentExpense = getTotalForMonth(transactions, currentMonth, "expense");
+  const fixedRecurringExpense = recurring
+    .filter((item) => item.isActive !== false && normalizeType(item.type) === "expense")
+    .reduce((sum, item) => sum + getAmount(item.amount), 0);
+  const monthlyReview = [
+    abnormalSpending[0]?.description || "No major abnormal spending was detected this month.",
+    reactiveAlerts[0]?.description || "No category is currently above the budget risk threshold.",
+    savingOpportunities[0]?.description || "No strong saving opportunity is visible yet.",
+    goalRecommendations[0]?.description || "Keep unused funds available for savings or next cycle.",
+  ];
+
+  return {
+    abnormalSpending,
+    budgetTransfers,
+    categoryBehaviors,
+    goalRecommendations,
+    lifestyleChanges,
+    monthlyReview,
+    reactiveAlerts,
+    savingOpportunities,
+    underspentRecommendations,
+    weekendPatterns,
+    whatIfSimulation: (purchaseAmount: number, purchaseLabel = "this purchase") => {
+      const projectedBalance = currentIncome - currentExpense - purchaseAmount - fixedRecurringExpense;
+
+      if (projectedBalance < 0) {
+        return {
+          message: `If you spend RM ${purchaseAmount.toFixed(0)} on ${purchaseLabel}, your projected month-end balance may become negative by RM ${Math.abs(projectedBalance).toFixed(0)}.`,
+          projectedBalance,
+          severity: "danger",
+        };
+      }
+
+      return {
+        message: `If you spend RM ${purchaseAmount.toFixed(0)} on ${purchaseLabel}, your projected month-end balance is about RM ${projectedBalance.toFixed(0)}.`,
+        projectedBalance,
+        severity: projectedBalance < currentIncome * 0.1 ? "warning" : "success",
+      };
+    },
+  };
+};

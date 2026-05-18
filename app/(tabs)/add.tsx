@@ -16,6 +16,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   setDoc,
@@ -40,6 +41,10 @@ import { AppHeader } from "../../components/app-header";
 import { useAppDialog } from "../../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
+import {
+  createReactiveBudgetAlert,
+  TransactionRecord,
+} from "../../services/financialIntelligence";
 import { getNextRecurringDate } from "../../services/recurringService";
 
 // 🚨 新增：引入你写好的 AI 解析服务
@@ -328,6 +333,7 @@ export default function AddTransactionScreen() {
   // ==========================================
   // 🚨 新增：AI 智能解析逻辑
   // ==========================================
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSmartInput = async () => {
     setVoiceModalVisible(true);
     if (Date.now() >= 0) return;
@@ -594,6 +600,43 @@ export default function AddTransactionScreen() {
     }
   };
 
+  const getPostSaveBudgetAlert = async (
+    savedTransaction: TransactionRecord,
+    userId: string,
+  ) => {
+    if (String(savedTransaction.type || "").toLowerCase() !== "expense") {
+      return null;
+    }
+
+    const transactionMonth = String(savedTransaction.date || formatDate(new Date())).slice(0, 7);
+    const budgetSnapshot = await getDoc(
+      doc(db, "monthly_budgets", `${userId}_${transactionMonth}`),
+    );
+    const allocations = budgetSnapshot.exists()
+      ? budgetSnapshot.data().allocations || {}
+      : {};
+    const transactionQuery = query(
+      collection(db, "transactions"),
+      where("userId", "==", userId),
+      where("date", ">=", `${transactionMonth}-01`),
+      where("date", "<=", `${transactionMonth}-31`),
+    );
+    const transactionSnapshot = await getDocs(transactionQuery);
+    const monthTransactions = transactionSnapshot.docs.map((transactionDoc) => ({
+      id: transactionDoc.id,
+      ...transactionDoc.data(),
+    })) as TransactionRecord[];
+
+    if (
+      savedTransaction.id &&
+      !monthTransactions.some((transaction) => transaction.id === savedTransaction.id)
+    ) {
+      monthTransactions.push(savedTransaction);
+    }
+
+    return createReactiveBudgetAlert(savedTransaction, monthTransactions, allocations);
+  };
+
   // ==========================================
   // 保存逻辑
   // ==========================================
@@ -624,6 +667,9 @@ export default function AddTransactionScreen() {
               entrySource,
               source: entrySource,
             };
+      let saveMessage = editId
+        ? "Transaction updated successfully."
+        : "Transaction saved successfully.";
 
       if (editId) {
         const recurringRef =
@@ -670,7 +716,19 @@ export default function AddTransactionScreen() {
           });
         }
 
-        appAlert("Success!", "Transaction updated successfully.");
+        const savedTransaction: TransactionRecord = {
+          id: editId,
+          amount: numericAmount,
+          category,
+          date: formatDate(date),
+          note,
+          recurring,
+          type: selectedSegment,
+        };
+        const budgetAlert = await getPostSaveBudgetAlert(savedTransaction, user.uid);
+        if (budgetAlert) {
+          saveMessage = `${saveMessage}\n\nAI Coach: ${budgetAlert.description}`;
+        }
       } else {
         const transactionRef = doc(collection(db, "transactions"));
         const recurringRef =
@@ -707,8 +765,23 @@ export default function AddTransactionScreen() {
             createdAt: now,
           });
         }
-        appAlert("Success!", "Transaction saved successfully.");
+
+        const savedTransaction: TransactionRecord = {
+          id: transactionRef.id,
+          amount: numericAmount,
+          category,
+          date: formatDate(date),
+          note,
+          recurring,
+          type: selectedSegment,
+        };
+        const budgetAlert = await getPostSaveBudgetAlert(savedTransaction, user.uid);
+        if (budgetAlert) {
+          saveMessage = `${saveMessage}\n\nAI Coach: ${budgetAlert.description}`;
+        }
       }
+
+      appAlert("Success!", saveMessage);
 
       setAmount("");
       setCategory("");
