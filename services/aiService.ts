@@ -25,6 +25,15 @@ export type ReceiptScanResult = {
   note?: string;
 };
 
+export type FinancialCoachResponse = {
+  headline: string;
+  summary: string;
+  notices: string[];
+  recommendations: string[];
+  nextMonthActions: string[];
+  tone: "encouraging" | "cautious" | "urgent";
+};
+
 async function postJson<T>(
   path: string,
   body: Record<string, unknown>,
@@ -108,6 +117,22 @@ export const scanReceiptImage = async (
       mimeType,
       userCategories,
       currentDate,
+    },
+    45000,
+  );
+};
+
+export const generateFinancialCoach = async (
+  month: string,
+  insights: Record<string, unknown>,
+  purchaseSimulation?: Record<string, unknown> | null,
+) => {
+  return postJson<FinancialCoachResponse>(
+    "/generate-financial-coach",
+    {
+      month,
+      insights,
+      purchaseSimulation: purchaseSimulation || null,
     },
     45000,
   );

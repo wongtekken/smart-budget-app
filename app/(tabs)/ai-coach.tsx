@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,6 +13,10 @@ import {
 import { AppHeader } from "../../components/app-header";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
+import {
+  FinancialCoachResponse,
+  generateFinancialCoach,
+} from "../../services/aiService";
 import {
   buildFinancialIntelligence,
   GoalRecord,
@@ -67,6 +72,9 @@ export default function AiCoachScreen() {
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringRecord[]>([]);
   const [plannedPurchase, setPlannedPurchase] = useState("");
+  const [coachResponse, setCoachResponse] = useState<FinancialCoachResponse | null>(null);
+  const [coachError, setCoachError] = useState("");
+  const [coachLoading, setCoachLoading] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -128,8 +136,13 @@ export default function AiCoachScreen() {
   );
 
   const purchaseAmount = Number(plannedPurchase) || 0;
-  const purchaseSimulation =
-    purchaseAmount > 0 ? aiInsights.whatIfSimulation(purchaseAmount, "planned purchase") : null;
+  const purchaseSimulation = useMemo(
+    () =>
+      purchaseAmount > 0
+        ? aiInsights.whatIfSimulation(purchaseAmount, "planned purchase")
+        : null,
+    [aiInsights, purchaseAmount],
+  );
   const insightCards = [
     ...aiInsights.abnormalSpending,
     ...aiInsights.weekendPatterns,
@@ -149,6 +162,57 @@ export default function AiCoachScreen() {
     aiInsights.savingOpportunities.length +
     aiInsights.underspentRecommendations.length +
     aiInsights.goalRecommendations.length;
+
+  const coachPayload = useMemo(
+    () => ({
+      abnormalSpending: aiInsights.abnormalSpending,
+      budgetTransfers: aiInsights.budgetTransfers,
+      categoryBehaviors: aiInsights.categoryBehaviors,
+      goalRecommendations: aiInsights.goalRecommendations,
+      lifestyleChanges: aiInsights.lifestyleChanges,
+      monthlyReview: aiInsights.monthlyReview,
+      reactiveAlerts: aiInsights.reactiveAlerts,
+      savingOpportunities: aiInsights.savingOpportunities,
+      underspentRecommendations: aiInsights.underspentRecommendations,
+      weekendPatterns: aiInsights.weekendPatterns,
+    }),
+    [aiInsights],
+  );
+
+  useEffect(() => {
+    if (transactions.length === 0) {
+      setCoachResponse(null);
+      setCoachError("");
+      return;
+    }
+
+    let isActive = true;
+    const timeoutId = setTimeout(() => {
+      setCoachLoading(true);
+      setCoachError("");
+
+      generateFinancialCoach(currentMonth, coachPayload, purchaseSimulation)
+        .then((response) => {
+          if (isActive) setCoachResponse(response);
+        })
+        .catch((error) => {
+          if (!isActive) return;
+          setCoachError(
+            error instanceof Error
+              ? error.message
+              : "Gemini could not generate coaching right now.",
+          );
+        })
+        .finally(() => {
+          if (isActive) setCoachLoading(false);
+        });
+    }, 600);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timeoutId);
+    };
+  }, [coachPayload, currentMonth, purchaseSimulation, transactions.length]);
 
   return (
     <View style={styles.container}>
@@ -188,7 +252,76 @@ export default function AiCoachScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Monthly Financial Review</Text>
+          <Text style={styles.sectionTitle}>Gemini Financial Coach</Text>
+          <View style={styles.geminiCard}>
+            <View style={styles.geminiHeader}>
+              <View style={styles.geminiIcon}>
+                {coachLoading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Ionicons name="sparkles" size={18} color="#FFF" />
+                )}
+              </View>
+              <View style={styles.geminiHeaderText}>
+                <Text style={styles.geminiHeadline}>
+                  {coachResponse?.headline || "Generating personalized guidance"}
+                </Text>
+                <Text style={styles.geminiTone}>
+                  {coachResponse
+                    ? `${coachResponse.tone} coaching`
+                    : "Powered by structured insights"}
+                </Text>
+              </View>
+            </View>
+
+            {coachError ? (
+              <Text style={styles.geminiError}>
+                Gemini is unavailable right now. Showing rule-based insights below.
+              </Text>
+            ) : (
+              <Text style={styles.geminiSummary}>
+                {coachResponse?.summary ||
+                  "Gemini will turn your detected spending patterns into practical financial guidance."}
+              </Text>
+            )}
+
+            {coachResponse?.notices.length ? (
+              <>
+                <Text style={styles.geminiSubTitle}>Spending notices</Text>
+                {coachResponse.notices.map((item, index) => (
+                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                    {index + 1}. {item}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+
+            {coachResponse?.recommendations.length ? (
+              <>
+                <Text style={styles.geminiSubTitle}>Recommended actions</Text>
+                {coachResponse.recommendations.map((item, index) => (
+                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                    {index + 1}. {item}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+
+            {coachResponse?.nextMonthActions.length ? (
+              <>
+                <Text style={styles.geminiSubTitle}>Next month</Text>
+                {coachResponse.nextMonthActions.map((item, index) => (
+                  <Text key={`${item}-${index}`} style={styles.geminiBullet}>
+                    {index + 1}. {item}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Analytical Review</Text>
           <View style={styles.reviewCard}>
             {aiInsights.monthlyReview.map((item, index) => (
               <View key={`${item}-${index}`} style={styles.reviewLine}>
@@ -371,6 +504,69 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  geminiCard: {
+    backgroundColor: palette.surface,
+    borderColor: palette.primarySoft,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: spacing.lg,
+    ...shadow.card,
+  },
+  geminiHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    marginBottom: 12,
+  },
+  geminiIcon: {
+    alignItems: "center",
+    backgroundColor: palette.primary,
+    borderRadius: 17,
+    height: 34,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 34,
+  },
+  geminiHeaderText: {
+    flex: 1,
+  },
+  geminiHeadline: {
+    color: palette.text,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  geminiTone: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+    textTransform: "capitalize",
+  },
+  geminiSummary: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 21,
+  },
+  geminiError: {
+    color: palette.warning,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  geminiSubTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 6,
+    marginTop: 14,
+  },
+  geminiBullet: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 20,
+    marginBottom: 4,
   },
   insightCard: {
     alignItems: "stretch",
