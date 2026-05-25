@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -32,6 +32,12 @@ const getLocalMonthStr = () => {
   return local.toISOString().slice(0, 7);
 };
 
+type TemplateAllocation = {
+  category?: string;
+  mode?: "Fixed" | "Percentage";
+  value?: number | string;
+};
+
 export default function BudgetScreen() {
   const router = useRouter();
   const { showDialog } = useAppDialog();
@@ -46,6 +52,8 @@ export default function BudgetScreen() {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [transactionsLoaded, setTransactionsLoaded] = useState(false);
+  const [budgetLoaded, setBudgetLoaded] = useState(false);
 
   // 🚨 手动修改预算的弹窗状态 (Edit)
   const [isEditModalVisible, setEditModalVisible] = useState(false);
@@ -81,6 +89,7 @@ export default function BudgetScreen() {
     const user = auth.currentUser;
     if (!user) return;
 
+    setTransactionsLoaded(false);
     const q = query(
       collection(db, "transactions"),
       where("userId", "==", user.uid),
@@ -115,6 +124,7 @@ export default function BudgetScreen() {
       setPreviousBalance(histIncome - histExpense);
       setTotalIncome(currIncome);
       setExpensesByCategory(expensesCalc);
+      setTransactionsLoaded(true);
     });
     return () => unsubscribe();
   }, [currentMonthStr]);
@@ -122,6 +132,7 @@ export default function BudgetScreen() {
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
+    setBudgetLoaded(false);
     const budgetDocId = `${user.uid}_${currentMonthStr}`;
     const unsubscribe = onSnapshot(
       doc(db, "monthly_budgets", budgetDocId),
@@ -131,6 +142,7 @@ export default function BudgetScreen() {
         } else {
           setAllocations({});
         }
+        setBudgetLoaded(true);
       },
     );
     return () => unsubscribe();
@@ -140,8 +152,14 @@ export default function BudgetScreen() {
   // 🧠 核心算力：计算资金与活跃状态
   // ==========================================
   const totalAvailable = totalIncome;
-  const parentCategories = expenseCategories.filter((c) => !c.parentId);
-  const activeCategoryNames = new Set(parentCategories.map((cat) => cat.name));
+  const parentCategories = useMemo(
+    () => expenseCategories.filter((c) => !c.parentId),
+    [expenseCategories],
+  );
+  const activeCategoryNames = useMemo(
+    () => new Set(parentCategories.map((cat) => cat.name)),
+    [parentCategories],
+  );
   const activeAllocations = categoriesLoaded
     ? Object.fromEntries(
         Object.entries(allocations).filter(([category]) =>
@@ -188,20 +206,57 @@ export default function BudgetScreen() {
       const executeTemplate = async () => {
         const user = auth.currentUser;
         if (!user) return;
+        if (!transactionsLoaded || !categoriesLoaded || !budgetLoaded) return;
 
         try {
-          const templateData = JSON.parse(params.injectedTemplate as string);
-          let newAllocations: Record<string, number> = {};
+          const templateParam = Array.isArray(params.injectedTemplate)
+            ? params.injectedTemplate[0]
+            : params.injectedTemplate;
+          const templateData = JSON.parse(templateParam || "[]") as TemplateAllocation[];
+          const hasPercentageAllocation = templateData.some(
+            (item) => item.mode === "Percentage" && Number(item.value) > 0,
+          );
 
-          templateData.forEach((item: any) => {
+          if (hasPercentageAllocation && totalAvailable <= 0) {
+            showDialog({
+              title: "Income Required",
+              message: "Add this month's income before applying a percentage template.",
+              type: "warning",
+            });
+            router.setParams({ injectedTemplate: "" });
+            return;
+          }
+
+          let newAllocations: Record<string, number> = {};
+          const skippedCategories: string[] = [];
+
+          templateData.forEach((item) => {
+            const category = String(item.category || "").trim();
+            if (!category) return;
+
+            if (!activeCategoryNames.has(category)) {
+              skippedCategories.push(category);
+              return;
+            }
+
             if (item.mode === "Fixed") {
-              newAllocations[item.category] = Number(item.value);
+              newAllocations[category] = Number(item.value) || 0;
             } else if (item.mode === "Percentage") {
               // 自动规整小数位，避免金额变成 19.99999
               const calculated = (Number(item.value) / 100) * totalAvailable;
-              newAllocations[item.category] = Number(calculated.toFixed(2));
+              newAllocations[category] = Number(calculated.toFixed(2));
             }
           });
+
+          if (Object.keys(newAllocations).length === 0) {
+            showDialog({
+              title: "Template Not Applied",
+              message: "This template does not contain any active expense categories.",
+              type: "warning",
+            });
+            router.setParams({ injectedTemplate: "" });
+            return;
+          }
 
           const budgetDocId = `${user.uid}_${currentMonthStr}`;
           await setDoc(
@@ -215,19 +270,35 @@ export default function BudgetScreen() {
           );
 
           showDialog({
-            title: "Success",
-            message: "Template applied to your budget!",
-            type: "success",
+            title: skippedCategories.length > 0 ? "Template Applied Partially" : "Success",
+            message:
+              skippedCategories.length > 0
+                ? `Template applied. ${skippedCategories.length} outdated categor${
+                    skippedCategories.length === 1 ? "y was" : "ies were"
+                  } ignored: ${skippedCategories.join(", ")}.`
+                : "Template applied to your budget!",
+            type: skippedCategories.length > 0 ? "warning" : "success",
           });
           router.setParams({ injectedTemplate: "" });
         } catch (error) {
           console.error("Template Parse Error", error);
+          router.setParams({ injectedTemplate: "" });
         }
       };
 
       executeTemplate();
     }
-  }, [currentMonthStr, params.injectedTemplate, router, showDialog, totalAvailable]);
+  }, [
+    activeCategoryNames,
+    budgetLoaded,
+    categoriesLoaded,
+    currentMonthStr,
+    params.injectedTemplate,
+    router,
+    showDialog,
+    totalAvailable,
+    transactionsLoaded,
+  ]);
 
   const handleSaveSingleBudget = async () => {
     const user = auth.currentUser;
