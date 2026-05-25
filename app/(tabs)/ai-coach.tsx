@@ -1,5 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,12 +28,15 @@ import {
 } from "../../services/aiService";
 import {
   buildFinancialIntelligence,
+  BudgetTransferSuggestion,
   GoalRecord,
   InsightSeverity,
   MonthlyBudgetRecord,
   RecurringRecord,
   TransactionRecord,
+  UnusedBudgetOpportunity,
 } from "../../services/financialIntelligence";
+import { useAppDialog } from "../../components/app-dialog";
 
 const getLocalDateStr = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -33,6 +44,11 @@ const getLocalDateStr = (date = new Date()) => {
 };
 
 const getLocalMonthStr = (date = new Date()) => getLocalDateStr(date).slice(0, 7);
+
+const getNextMonthStr = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return getLocalMonthStr(new Date(year, monthIndex, 1));
+};
 
 const getSeverityColor = (severity: InsightSeverity) => {
   if (severity === "danger") return palette.danger;
@@ -67,6 +83,7 @@ const InsightCard = ({
 };
 
 export default function AiCoachScreen() {
+  const { showConfirm, showDialog } = useAppDialog();
   const currentMonth = getLocalMonthStr();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [budgets, setBudgets] = useState<MonthlyBudgetRecord[]>([]);
@@ -76,6 +93,8 @@ export default function AiCoachScreen() {
   const [coachResponse, setCoachResponse] = useState<FinancialCoachResponse | null>(null);
   const [coachError, setCoachError] = useState("");
   const [coachLoading, setCoachLoading] = useState(false);
+  const [transferInProgress, setTransferInProgress] = useState(false);
+  const [rolloverInProgress, setRolloverInProgress] = useState(false);
   const [expandedSection, setExpandedSection] = useState<
     "coach" | "review" | "patterns" | "categories" | "actions" | null
   >(null);
@@ -165,7 +184,13 @@ export default function AiCoachScreen() {
   const opportunityCount =
     aiInsights.savingOpportunities.length +
     aiInsights.underspentRecommendations.length +
-    aiInsights.goalRecommendations.length;
+    aiInsights.goalRecommendations.length +
+    aiInsights.unusedBudgetOpportunities.length;
+  const totalUnusedBudget = aiInsights.unusedBudgetOpportunities.reduce(
+    (sum, item) => sum + item.unusedAmount,
+    0,
+  );
+  const goalCategoryName = goals[0]?.title ? `\uD83C\uDFAF ${goals[0].title}` : "";
   const primaryAction =
     coachResponse?.recommendations[0] ||
     coachCards[0]?.description ||
@@ -187,6 +212,7 @@ export default function AiCoachScreen() {
       reactiveAlerts: aiInsights.reactiveAlerts,
       savingOpportunities: aiInsights.savingOpportunities,
       underspentRecommendations: aiInsights.underspentRecommendations,
+      unusedBudgetOpportunities: aiInsights.unusedBudgetOpportunities,
       weekendPatterns: aiInsights.weekendPatterns,
     }),
     [aiInsights],
@@ -231,6 +257,194 @@ export default function AiCoachScreen() {
     section: "coach" | "review" | "patterns" | "categories" | "actions",
   ) => {
     setExpandedSection((current) => (current === section ? null : section));
+  };
+
+  const handleBudgetTransfer = async (transfer: BudgetTransferSuggestion) => {
+    if (transferInProgress) return;
+
+    const user = auth.currentUser;
+    const amount = Number(transfer.amount.toFixed(2));
+    const sourceAllocated = Number(currentAllocations[transfer.fromCategory] || 0);
+    const targetAllocated = Number(currentAllocations[transfer.toCategory] || 0);
+
+    if (!user) {
+      showDialog({
+        title: "Login Required",
+        message: "Please log in before transferring budget.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (
+      amount <= 0 ||
+      transfer.fromCategory === transfer.toCategory ||
+      sourceAllocated <= 0 ||
+      sourceAllocated < amount
+    ) {
+      showDialog({
+        title: "Transfer Unavailable",
+        message: "This budget transfer is no longer valid. Please refresh your budget data.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: "Transfer Budget",
+      message: `Move RM ${amount.toFixed(2)} from ${transfer.fromCategory} to ${transfer.toCategory}?`,
+      confirmLabel: "Transfer",
+      type: "confirm",
+    });
+
+    if (!confirmed) return;
+
+    setTransferInProgress(true);
+    try {
+      const nextAllocations = {
+        ...currentAllocations,
+        [transfer.fromCategory]: Number(Math.max(sourceAllocated - amount, 0).toFixed(2)),
+        [transfer.toCategory]: Number((targetAllocated + amount).toFixed(2)),
+      };
+
+      await setDoc(
+        doc(db, "monthly_budgets", `${user.uid}_${currentMonth}`),
+        {
+          userId: user.uid,
+          month: currentMonth,
+          allocations: nextAllocations,
+        },
+        { merge: true },
+      );
+
+      showDialog({
+        title: "Budget Transferred",
+        message: `RM ${amount.toFixed(2)} has been moved from ${transfer.fromCategory} to ${transfer.toCategory}.`,
+        type: "success",
+      });
+    } catch {
+      showDialog({
+        title: "Transfer Failed",
+        message: "Failed to update your budget. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setTransferInProgress(false);
+    }
+  };
+
+  const addToNextMonthBudget = async (
+    category: string,
+    amount: number,
+    successMessage: string,
+  ) => {
+    const user = auth.currentUser;
+    const nextMonth = getNextMonthStr(currentMonth);
+
+    if (!user) {
+      showDialog({
+        title: "Login Required",
+        message: "Please log in before updating next month's budget.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (!category || amount <= 0) {
+      showDialog({
+        title: "Rollover Unavailable",
+        message: "This unused budget action is no longer valid.",
+        type: "warning",
+      });
+      return;
+    }
+
+    setRolloverInProgress(true);
+    try {
+      const nextBudgetRef = doc(db, "monthly_budgets", `${user.uid}_${nextMonth}`);
+      const nextBudgetSnapshot = await getDoc(nextBudgetRef);
+      const nextAllocations = nextBudgetSnapshot.exists()
+        ? nextBudgetSnapshot.data().allocations || {}
+        : {};
+
+      await setDoc(
+        nextBudgetRef,
+        {
+          userId: user.uid,
+          month: nextMonth,
+          allocations: {
+            ...nextAllocations,
+            [category]: Number((Number(nextAllocations[category] || 0) + amount).toFixed(2)),
+          },
+        },
+        { merge: true },
+      );
+
+      showDialog({
+        title: "Next Month Updated",
+        message: successMessage,
+        type: "success",
+      });
+    } catch {
+      showDialog({
+        title: "Update Failed",
+        message: "Failed to update next month's budget. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setRolloverInProgress(false);
+    }
+  };
+
+  const handleCarryUnusedBudget = async (opportunity: UnusedBudgetOpportunity) => {
+    if (rolloverInProgress) return;
+
+    const currentAllocated = Number(currentAllocations[opportunity.category] || 0);
+    const amount = Number(opportunity.unusedAmount.toFixed(2));
+
+    if (currentAllocated <= 0 || amount <= 0 || currentAllocated < amount) {
+      showDialog({
+        title: "Rollover Unavailable",
+        message: "This category no longer has enough unused budget to carry forward.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: "Carry Budget Forward",
+      message: `Add RM ${amount.toFixed(2)} from ${opportunity.category} to next month's ${opportunity.category} budget?`,
+      confirmLabel: "Carry",
+      type: "confirm",
+    });
+
+    if (!confirmed) return;
+
+    await addToNextMonthBudget(
+      opportunity.category,
+      amount,
+      `RM ${amount.toFixed(2)} has been added to next month's ${opportunity.category} budget.`,
+    );
+  };
+
+  const handleMoveUnusedToGoal = async (opportunity: UnusedBudgetOpportunity) => {
+    if (rolloverInProgress || !goalCategoryName) return;
+
+    const amount = Number(opportunity.unusedAmount.toFixed(2));
+    const confirmed = await showConfirm({
+      title: "Move to Goal",
+      message: `Move RM ${amount.toFixed(2)} from ${opportunity.category} to next month's ${goalCategoryName} budget?`,
+      confirmLabel: "Move",
+      type: "confirm",
+    });
+
+    if (!confirmed) return;
+
+    await addToNextMonthBudget(
+      goalCategoryName,
+      amount,
+      `RM ${amount.toFixed(2)} has been moved to next month's ${goalCategoryName} budget.`,
+    );
   };
 
   const SectionToggle = ({
@@ -493,12 +707,82 @@ export default function AiCoachScreen() {
 
         <View style={styles.section}>
           <SectionToggle
-            count={coachCards.length + aiInsights.budgetTransfers.length}
+            count={
+              coachCards.length +
+              aiInsights.budgetTransfers.length +
+              aiInsights.unusedBudgetOpportunities.length
+            }
             section="actions"
             title="Budget actions"
           />
           {expandedSection === "actions" && (
             <>
+              {aiInsights.unusedBudgetOpportunities.length > 0 && (
+                <View style={styles.unusedSummaryCard}>
+                  <View style={styles.unusedSummaryHeader}>
+                    <View>
+                      <Text style={styles.unusedSummaryTitle}>Unused Budget</Text>
+                      <Text style={styles.unusedSummaryMeta}>
+                        RM {totalUnusedBudget.toFixed(2)} available to carry forward
+                      </Text>
+                    </View>
+                    <Ionicons name="archive-outline" size={24} color={palette.success} />
+                  </View>
+
+                  {aiInsights.unusedBudgetOpportunities.slice(0, 4).map((item) => (
+                    <View key={item.category} style={styles.unusedItem}>
+                      <View style={styles.unusedItemHeader}>
+                        <View>
+                          <Text style={styles.unusedCategory}>{item.category}</Text>
+                          <Text style={styles.unusedMeta}>
+                            RM {item.spent.toFixed(0)} used / RM {item.allocated.toFixed(0)} budget
+                          </Text>
+                        </View>
+                        <Text style={styles.unusedAmount}>
+                          RM {item.unusedAmount.toFixed(2)}
+                        </Text>
+                      </View>
+                      <Text style={styles.unusedMessage}>{item.message}</Text>
+                      <View style={styles.unusedActions}>
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          disabled={rolloverInProgress}
+                          onPress={() => handleCarryUnusedBudget(item)}
+                          style={[
+                            styles.unusedButton,
+                            rolloverInProgress && styles.transferButtonDisabled,
+                          ]}
+                        >
+                          {rolloverInProgress ? (
+                            <ActivityIndicator color="#FFF" />
+                          ) : (
+                            <>
+                              <Ionicons name="arrow-forward-circle" size={18} color="#FFF" />
+                              <Text style={styles.unusedButtonText}>Carry</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+
+                        {goalCategoryName ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            disabled={rolloverInProgress}
+                            onPress={() => handleMoveUnusedToGoal(item)}
+                            style={[
+                              styles.unusedSecondaryButton,
+                              rolloverInProgress && styles.transferButtonDisabled,
+                            ]}
+                          >
+                            <Ionicons name="flag-outline" size={18} color={palette.primary} />
+                            <Text style={styles.unusedSecondaryButtonText}>Goal</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
               {coachCards.length > 0 ? (
                 coachCards.map((item, index) => (
                   <InsightCard key={`${item.title}-${index}`} {...item} />
@@ -511,8 +795,38 @@ export default function AiCoachScreen() {
 
               {aiInsights.budgetTransfers.map((item) => (
                 <View key={`${item.fromCategory}-${item.toCategory}`} style={styles.transferCard}>
-                  <Ionicons name="swap-horizontal" size={22} color={palette.primary} />
+                  <View style={styles.transferHeader}>
+                    <View style={styles.transferIcon}>
+                      <Ionicons name="swap-horizontal" size={22} color={palette.primary} />
+                    </View>
+                    <View style={styles.transferSummary}>
+                      <Text style={styles.transferTitle}>
+                        RM {Number(item.amount).toFixed(2)}
+                      </Text>
+                      <Text style={styles.transferRoute} numberOfLines={1}>
+                        {item.fromCategory} to {item.toCategory}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.transferText}>{item.message}</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    disabled={transferInProgress}
+                    onPress={() => handleBudgetTransfer(item)}
+                    style={[
+                      styles.transferButton,
+                      transferInProgress && styles.transferButtonDisabled,
+                    ]}
+                  >
+                    {transferInProgress ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                        <Text style={styles.transferButtonText}>Transfer</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </View>
               ))}
             </>
@@ -858,20 +1172,156 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   transferCard: {
-    alignItems: "center",
     backgroundColor: palette.primarySoft,
     borderRadius: radius.lg,
-    flexDirection: "row",
     marginBottom: 10,
     padding: 14,
   },
+  transferHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    marginBottom: 10,
+  },
+  transferIcon: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 36,
+  },
+  transferSummary: {
+    flex: 1,
+  },
+  transferTitle: {
+    color: palette.primary,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  transferRoute: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
   transferText: {
     color: palette.primary,
-    flex: 1,
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 20,
+  },
+  transferButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: palette.primary,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  transferButtonDisabled: {
+    opacity: 0.65,
+  },
+  transferButtonText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontWeight: "900",
+    marginLeft: 6,
+  },
+  unusedSummaryCard: {
+    backgroundColor: palette.successSoft,
+    borderColor: "#CFEBD7",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 14,
+  },
+  unusedSummaryHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  unusedSummaryTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  unusedSummaryMeta: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  unusedItem: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.md,
+    marginBottom: 10,
+    padding: 12,
+  },
+  unusedItemHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  unusedCategory: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  unusedMeta: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  unusedAmount: {
+    color: palette.success,
+    fontSize: 14,
+    fontWeight: "900",
     marginLeft: 10,
+  },
+  unusedMessage: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  unusedActions: {
+    flexDirection: "row",
+    marginTop: 10,
+  },
+  unusedButton: {
+    alignItems: "center",
+    backgroundColor: palette.success,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    marginRight: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  unusedButtonText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 6,
+  },
+  unusedSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  unusedSecondaryButtonText: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 6,
   },
   simulatorCard: {
     backgroundColor: palette.surface,

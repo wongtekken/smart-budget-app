@@ -137,7 +137,7 @@ export default function BudgetScreen() {
   // ==========================================
   // 🧠 核心算力：计算资金与活跃状态
   // ==========================================
-  const totalAvailable = previousBalance + totalIncome;
+  const totalAvailable = totalIncome;
   const totalAllocated = Object.values(allocations).reduce(
     (sum, val) => sum + val,
     0,
@@ -153,9 +153,8 @@ export default function BudgetScreen() {
       (expensesByCategory[cat.name] || 0) > 0,
   );
 
-  const unusedCategories = parentCategories.filter(
-    (cat) =>
-      !(allocations[cat.name] || 0) && !(expensesByCategory[cat.name] || 0),
+  const addableCategories = parentCategories.filter(
+    (cat) => (allocations[cat.name] || 0) <= 0,
   );
 
   // ==========================================
@@ -345,8 +344,8 @@ export default function BudgetScreen() {
               />
               <Text style={styles.rolloverText}>
                 {previousBalance > 0
-                  ? "Rollover from past: +"
-                  : "Debt from past: "}{" "}
+                  ? "Historical balance: +"
+                  : "Historical balance: "}{" "}
                 RM {previousBalance.toFixed(2)}
               </Text>
             </View>
@@ -387,7 +386,7 @@ export default function BudgetScreen() {
           >
             <Text style={styles.breakdownTitle}>Detailed Breakdown</Text>
             {/* 🚨 零基预算：如果还有闲置分类没加，就显示 + 号 */}
-            {unusedCategories.length > 0 && (
+            {addableCategories.length > 0 && (
               <TouchableOpacity
                 onPress={() => setAddModalVisible(true)}
                 style={{ padding: 5 }}
@@ -410,8 +409,9 @@ export default function BudgetScreen() {
 
             let progress =
               allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
-            const isAtRisk = progress >= 0.8 && progress < 1;
-            const isOverBudget = spent > allocated;
+            const isUnbudgeted = allocated <= 0 && spent > 0;
+            const isAtRisk = allocated > 0 && progress >= 0.8 && progress < 1;
+            const isOverBudget = allocated > 0 && spent > allocated;
 
             return (
               <TouchableOpacity
@@ -431,9 +431,24 @@ export default function BudgetScreen() {
                     ) : (
                       <>
                         <Text style={styles.amountText}>
-                          RM {spent.toFixed(0)} / RM {allocated.toFixed(0)}
+                          {isUnbudgeted
+                            ? `RM ${spent.toFixed(0)} / No budget`
+                            : `RM ${spent.toFixed(0)} / RM ${allocated.toFixed(0)}`}
                         </Text>
-                        {isOverBudget ? (
+                        {isUnbudgeted ? (
+                          <View style={styles.atRiskBadge}>
+                            <Ionicons
+                              name="warning"
+                              size={14}
+                              color={palette.warning}
+                            />
+                            <Text
+                              style={[styles.atRiskText, { color: palette.warning }]}
+                            >
+                              No budget
+                            </Text>
+                          </View>
+                        ) : isOverBudget ? (
                           <View style={styles.atRiskBadge}>
                             <Ionicons
                               name="alert-circle"
@@ -477,12 +492,14 @@ export default function BudgetScreen() {
                     <View
                       style={[
                         styles.progressBarFill,
-                        { width: `${Math.min(progress * 100, 100)}%` },
-                        isOverBudget
-                          ? styles.fillRed
-                          : isAtRisk
-                            ? styles.fillYellow
-                            : styles.fillGreen,
+                        { width: `${isUnbudgeted ? 100 : Math.min(progress * 100, 100)}%` },
+                        isUnbudgeted
+                          ? styles.fillYellow
+                          : isOverBudget
+                            ? styles.fillRed
+                            : isAtRisk
+                              ? styles.fillYellow
+                              : styles.fillGreen,
                       ]}
                     />
                   )}
@@ -602,7 +619,7 @@ export default function BudgetScreen() {
                   flexWrap: "wrap",
                 }}
               >
-                {unusedCategories.map((cat) => (
+                {addableCategories.map((cat) => (
                   <TouchableOpacity
                     key={cat.id}
                     style={[

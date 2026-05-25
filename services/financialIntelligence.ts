@@ -62,6 +62,14 @@ export type BudgetTransferSuggestion = {
   toCategory: string;
 };
 
+export type UnusedBudgetOpportunity = {
+  allocated: number;
+  category: string;
+  message: string;
+  spent: number;
+  unusedAmount: number;
+};
+
 export type WhatIfSimulation = {
   message: string;
   projectedBalance: number;
@@ -78,6 +86,7 @@ export type FinancialIntelligenceResult = {
   reactiveAlerts: InsightItem[];
   savingOpportunities: InsightItem[];
   underspentRecommendations: InsightItem[];
+  unusedBudgetOpportunities: UnusedBudgetOpportunity[];
   weekendPatterns: InsightItem[];
   whatIfSimulation: (purchaseAmount: number, purchaseLabel?: string) => WhatIfSimulation;
 };
@@ -432,6 +441,31 @@ const createBudgetTransfers = (
   return suggestions;
 };
 
+const createUnusedBudgetOpportunities = (
+  currentSpendByCategory: Record<string, number>,
+  currentAllocations: Record<string, number>,
+) =>
+  Object.keys(currentAllocations)
+    .map((category) => {
+      const allocated = Number(currentAllocations[category] || 0);
+      const spent = currentSpendByCategory[category] || 0;
+      const unusedAmount = allocated - spent;
+
+      if (category.startsWith("\uD83C\uDFAF") || allocated <= 0 || unusedAmount <= 0) {
+        return null;
+      }
+
+      return {
+        allocated,
+        category,
+        message: `${category} still has RM ${unusedAmount.toFixed(0)} unused. You can carry it to next month or move it to a goal.`,
+        spent,
+        unusedAmount,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b?.unusedAmount || 0) - (a?.unusedAmount || 0)) as UnusedBudgetOpportunity[];
+
 const createUnderspentRecommendations = (
   budgets: MonthlyBudgetRecord[],
   transactions: TransactionRecord[],
@@ -625,6 +659,10 @@ export const buildFinancialIntelligence = ({
     }));
 
   const budgetTransfers = createBudgetTransfers(currentSpendByCategory, currentAllocations);
+  const unusedBudgetOpportunities = createUnusedBudgetOpportunities(
+    currentSpendByCategory,
+    currentAllocations,
+  );
   const underspentRecommendations = createUnderspentRecommendations(budgets, transactions, currentMonth);
   const savingOpportunities = createSavingOpportunities(
     currentSpendByCategory,
@@ -666,6 +704,7 @@ export const buildFinancialIntelligence = ({
     reactiveAlerts,
     savingOpportunities,
     underspentRecommendations,
+    unusedBudgetOpportunities,
     weekendPatterns,
     whatIfSimulation: (purchaseAmount: number, purchaseLabel = "this purchase") => {
       const projectedBalance = currentIncome - currentExpense - purchaseAmount - fixedRecurringExpense;

@@ -420,7 +420,8 @@ export default function DashboardScreen() {
               <View style={styles.breakdownCard}>
                 {dashboard.categories.length > 0 ? (
                   dashboard.categories.map((item) => {
-                    const isAtRisk = item.progress >= 0.8 && item.progress < 1;
+                    const isUnbudgeted = item.allocated === 0 && item.spent > 0;
+                    const isAtRisk = item.allocated > 0 && item.progress >= 0.8 && item.progress < 1;
                     const isOverBudget = item.allocated > 0 && item.spent > item.allocated;
 
                     return (
@@ -436,9 +437,23 @@ export default function DashboardScreen() {
 
                           <View style={styles.breakdownAmountGroup}>
                             <Text style={styles.breakdownAmountText}>
-                              RM {item.spent.toFixed(0)} / RM {item.allocated.toFixed(0)}
+                              {isUnbudgeted
+                                ? `RM ${item.spent.toFixed(0)} / No budget`
+                                : `RM ${item.spent.toFixed(0)} / RM ${item.allocated.toFixed(0)}`}
                             </Text>
-                            {isOverBudget ? (
+                            {isUnbudgeted ? (
+                              <View style={styles.breakdownStatusBadge}>
+                                <Ionicons name="warning" size={14} color={palette.warning} />
+                                <Text
+                                  style={[
+                                    styles.breakdownStatusText,
+                                    { color: palette.warning },
+                                  ]}
+                                >
+                                  Unbudgeted
+                                </Text>
+                              </View>
+                            ) : isOverBudget ? (
                               <View style={styles.breakdownStatusBadge}>
                                 <Ionicons name="alert-circle" size={14} color={palette.danger} />
                                 <Text style={styles.breakdownStatusText}>Over!</Text>
@@ -464,9 +479,11 @@ export default function DashboardScreen() {
                             style={[
                               styles.breakdownProgressFill,
                               {
-                                width: `${Math.min(item.progress * 100, 100)}%`,
+                                width: `${isUnbudgeted ? 100 : Math.min(item.progress * 100, 100)}%`,
                               },
-                              isOverBudget
+                              isUnbudgeted
+                                ? styles.breakdownFillYellow
+                                : isOverBudget
                                 ? styles.breakdownFillRed
                                 : isAtRisk
                                   ? styles.breakdownFillYellow
