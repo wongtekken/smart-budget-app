@@ -19,17 +19,11 @@ import {
   doc,
   onSnapshot,
   query,
-  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
 import { AppHeader } from "../components/app-header";
 import { useAppDialog } from "../components/app-dialog";
-import {
-  buildDefaultBudgetTemplateDoc,
-  DEFAULT_BUDGET_TEMPLATES,
-  getDefaultBudgetTemplateDocId,
-} from "../constants/defaultBudgetTemplates";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
@@ -76,36 +70,6 @@ export default function TemplateScreen() {
   );
 
   // 拉取数据
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const syncDefaultTemplates = async () => {
-      try {
-        await Promise.all(
-          DEFAULT_BUDGET_TEMPLATES.map((template) =>
-            setDoc(
-              doc(
-                db,
-                "templates",
-                getDefaultBudgetTemplateDocId(user.uid, template.key),
-              ),
-              {
-                ...buildDefaultBudgetTemplateDoc(user.uid, template),
-                updatedAt: new Date(),
-              },
-              { merge: true },
-            ),
-          ),
-        );
-      } catch (error) {
-        console.error("Failed to sync default budget templates:", error);
-      }
-    };
-
-    syncDefaultTemplates();
-  }, []);
-
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
