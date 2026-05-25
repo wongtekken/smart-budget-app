@@ -45,6 +45,7 @@ export default function BudgetScreen() {
   >({});
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
   // 🚨 手动修改预算的弹窗状态 (Edit)
   const [isEditModalVisible, setEditModalVisible] = useState(false);
@@ -71,6 +72,7 @@ export default function BudgetScreen() {
       const cats: any[] = [];
       snapshot.forEach((doc) => cats.push({ id: doc.id, ...doc.data() }));
       setExpenseCategories(cats);
+      setCategoriesLoaded(true);
     });
     return () => unsubscribe();
   }, []);
@@ -138,23 +140,44 @@ export default function BudgetScreen() {
   // 🧠 核心算力：计算资金与活跃状态
   // ==========================================
   const totalAvailable = totalIncome;
-  const totalAllocated = Object.values(allocations).reduce(
+  const parentCategories = expenseCategories.filter((c) => !c.parentId);
+  const activeCategoryNames = new Set(parentCategories.map((cat) => cat.name));
+  const activeAllocations = categoriesLoaded
+    ? Object.fromEntries(
+        Object.entries(allocations).filter(([category]) =>
+          activeCategoryNames.has(category),
+        ),
+      )
+    : allocations;
+
+  const totalAllocated = Object.values(activeAllocations).reduce(
     (sum, val) => sum + val,
     0,
   );
   const awaitingAssign = totalAvailable - totalAllocated;
 
   // 🚨 智能分类过滤：提取活跃分类与闲置分类
-  const parentCategories = expenseCategories.filter((c) => !c.parentId);
+  const activeExpensesByCategory = categoriesLoaded
+    ? Object.fromEntries(
+        Object.entries(expensesByCategory).filter(([category]) =>
+          activeCategoryNames.has(category),
+        ),
+      )
+    : expensesByCategory;
+  const inactiveCategorySpend = categoriesLoaded
+    ? Object.entries(expensesByCategory)
+        .filter(([category]) => !activeCategoryNames.has(category))
+        .reduce((sum, [, amount]) => sum + amount, 0)
+    : 0;
 
   const activeCategories = parentCategories.filter(
     (cat) =>
-      (allocations[cat.name] || 0) > 0 ||
-      (expensesByCategory[cat.name] || 0) > 0,
+      (activeAllocations[cat.name] || 0) > 0 ||
+      (activeExpensesByCategory[cat.name] || 0) > 0,
   );
 
   const addableCategories = parentCategories.filter(
-    (cat) => (allocations[cat.name] || 0) <= 0,
+    (cat) => (activeAllocations[cat.name] || 0) <= 0,
   );
 
   // ==========================================
@@ -399,10 +422,20 @@ export default function BudgetScreen() {
             Tap any category to adjust its budget manually.
           </Text>
 
+          {inactiveCategorySpend > 0 && (
+            <View style={styles.inactiveCategoryCard}>
+              <Ionicons name="information-circle-outline" size={18} color={palette.warning} />
+              <Text style={styles.inactiveCategoryText}>
+                RM {inactiveCategorySpend.toFixed(2)} from deleted categories still counts in
+                total spending, but is hidden from active category budgets.
+              </Text>
+            </View>
+          )}
+
           {/* 🚨 循环渲染活跃分类 */}
           {activeCategories.map((cat) => {
-            const spent = expensesByCategory[cat.name] || 0;
-            const allocated = allocations[cat.name] || 0;
+            const spent = activeExpensesByCategory[cat.name] || 0;
+            const allocated = activeAllocations[cat.name] || 0;
 
             // 🚨 UI 劫持：判断这是否是目标存钱罐分类
             const isGoalCategory = cat.name.startsWith("🎯") || cat.isGoal;
@@ -770,6 +803,24 @@ const styles = StyleSheet.create({
     ...shadow.subtle,
   },
   breakdownTitle: { fontSize: 22, fontWeight: "900", color: palette.text },
+  inactiveCategoryCard: {
+    alignItems: "flex-start",
+    backgroundColor: palette.accentSoft,
+    borderColor: palette.accent,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginBottom: 18,
+    padding: spacing.md,
+  },
+  inactiveCategoryText: {
+    color: palette.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginLeft: spacing.sm,
+  },
   budgetItem: { marginBottom: 25 },
   itemTextRow: {
     flexDirection: "row",

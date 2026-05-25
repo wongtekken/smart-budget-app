@@ -32,6 +32,12 @@ type Transaction = {
   type?: "Income" | "Expense" | "income" | "expense";
 };
 
+type ExpenseCategory = {
+  id: string;
+  name?: string;
+  parentId?: string | null;
+};
+
 const getLocalMonthStr = () => {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
@@ -91,22 +97,28 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const currentMonth = getLocalMonthStr();
 
   useEffect(() => {
     let unsubscribeTx: (() => void) | undefined;
     let unsubscribeBudget: (() => void) | undefined;
+    let unsubscribeCategories: (() => void) | undefined;
 
     setLoading(true);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeTx?.();
       unsubscribeBudget?.();
+      unsubscribeCategories?.();
 
       if (!user) {
         setTransactions([]);
         setAllocations({});
+        setExpenseCategories([]);
+        setCategoriesLoaded(false);
         setLoading(false);
         return;
       }
@@ -135,19 +147,40 @@ export default function DashboardScreen() {
           setAllocations(snapshot.exists() ? snapshot.data().allocations || {} : {});
         },
       );
+
+      const categoryQuery = query(
+        collection(db, "categories"),
+        where("userId", "==", user.uid),
+        where("type", "==", "Expense"),
+      );
+
+      unsubscribeCategories = onSnapshot(categoryQuery, (snapshot) => {
+        setExpenseCategories(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ExpenseCategory[],
+        );
+        setCategoriesLoaded(true);
+      });
     });
 
     return () => {
       unsubscribeAuth();
       unsubscribeTx?.();
       unsubscribeBudget?.();
+      unsubscribeCategories?.();
     };
   }, [currentMonth]);
 
   const dashboard = useMemo(() => {
     let income = 0;
     let expenses = 0;
+    let inactiveCategorySpend = 0;
     const spentByCategory: Record<string, number> = {};
+    const activeCategoryNames = new Set(
+      expenseCategories
+        .filter((category) => !category.parentId && category.name)
+        .map((category) => category.name as string),
+    );
+    const shouldFilterCategories = categoriesLoaded;
 
     transactions.forEach((tx) => {
       const amount = Number(tx.amount) || 0;
@@ -160,19 +193,31 @@ export default function DashboardScreen() {
       if (type === "expense") {
         expenses += amount;
         const parentCategory = tx.category ? tx.category.split(" - ")[0] : "Uncategorized";
-        spentByCategory[parentCategory] = (spentByCategory[parentCategory] || 0) + amount;
+        if (shouldFilterCategories && !activeCategoryNames.has(parentCategory)) {
+          inactiveCategorySpend += amount;
+        } else {
+          spentByCategory[parentCategory] = (spentByCategory[parentCategory] || 0) + amount;
+        }
       }
     });
 
-    const allocated = Object.values(allocations).reduce((sum, value) => sum + Number(value || 0), 0);
+    const visibleAllocations = shouldFilterCategories
+      ? Object.fromEntries(
+          Object.entries(allocations).filter(([category]) => activeCategoryNames.has(category)),
+        )
+      : allocations;
+    const allocated = Object.values(visibleAllocations).reduce(
+      (sum, value) => sum + Number(value || 0),
+      0,
+    );
     const budgetUsed = allocated > 0 ? expenses / allocated : 0;
     const netCashFlow = income - expenses;
 
     const monthProgress = getMonthProgress(currentMonth);
     const budgetExpectedUsage = allocated > 0 ? Math.min(monthProgress + 0.08, 1) : 0;
-    const categoryStats = Object.keys({ ...allocations, ...spentByCategory })
+    const categoryStats = Object.keys({ ...visibleAllocations, ...spentByCategory })
       .map((name) => {
-        const allocatedAmount = Number(allocations[name] || 0);
+        const allocatedAmount = Number(visibleAllocations[name] || 0);
         const spent = spentByCategory[name] || 0;
         const progress = allocatedAmount > 0 ? spent / allocatedAmount : spent > 0 ? 1 : 0;
 
@@ -246,11 +291,12 @@ export default function DashboardScreen() {
       healthInsight,
       healthProfile,
       healthScore,
+      inactiveCategorySpend,
       income,
       latestTransactions: transactions.slice(0, 4),
       netCashFlow,
     };
-  }, [allocations, currentMonth, transactions]);
+  }, [allocations, categoriesLoaded, currentMonth, expenseCategories, transactions]);
 
   const budgetStatus =
     dashboard.allocated === 0
@@ -418,6 +464,16 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.breakdownCard}>
+                {dashboard.inactiveCategorySpend > 0 ? (
+                  <View style={styles.inactiveNotice}>
+                    <Ionicons name="information-circle-outline" size={18} color={palette.warning} />
+                    <Text style={styles.inactiveNoticeText}>
+                      RM {dashboard.inactiveCategorySpend.toFixed(0)} spent in deleted categories
+                      still counts in total expenses.
+                    </Text>
+                  </View>
+                ) : null}
+
                 {dashboard.categories.length > 0 ? (
                   dashboard.categories.map((item) => {
                     const isUnbudgeted = item.allocated === 0 && item.spent > 0;
@@ -712,6 +768,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.xl,
     ...shadow.subtle,
+  },
+  inactiveNotice: {
+    alignItems: "flex-start",
+    backgroundColor: palette.accentSoft,
+    borderColor: palette.accent,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  inactiveNoticeText: {
+    color: palette.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginLeft: spacing.sm,
   },
   breakdownItem: {
     marginBottom: spacing.xxl,

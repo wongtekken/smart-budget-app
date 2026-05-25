@@ -38,6 +38,12 @@ import {
 } from "../../services/financialIntelligence";
 import { useAppDialog } from "../../components/app-dialog";
 
+type ExpenseCategoryRecord = {
+  id: string;
+  name?: string;
+  parentId?: string | null;
+};
+
 const getLocalDateStr = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
@@ -87,6 +93,7 @@ export default function AiCoachScreen() {
   const currentMonth = getLocalMonthStr();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [budgets, setBudgets] = useState<MonthlyBudgetRecord[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryRecord[]>([]);
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringRecord[]>([]);
   const [plannedPurchase, setPlannedPurchase] = useState("");
@@ -105,6 +112,11 @@ export default function AiCoachScreen() {
 
     const txQuery = query(collection(db, "transactions"), where("userId", "==", user.uid));
     const budgetQuery = query(collection(db, "monthly_budgets"), where("userId", "==", user.uid));
+    const categoryQuery = query(
+      collection(db, "categories"),
+      where("userId", "==", user.uid),
+      where("type", "==", "Expense"),
+    );
     const goalQuery = query(collection(db, "goals"), where("userId", "==", user.uid));
     const recurringQuery = query(
       collection(db, "recurring_transactions"),
@@ -123,6 +135,12 @@ export default function AiCoachScreen() {
       );
     });
 
+    const unsubscribeCategories = onSnapshot(categoryQuery, (snapshot) => {
+      setExpenseCategories(
+        snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ExpenseCategoryRecord[],
+      );
+    });
+
     const unsubscribeGoals = onSnapshot(goalQuery, (snapshot) => {
       setGoals(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as GoalRecord[]);
     });
@@ -136,6 +154,7 @@ export default function AiCoachScreen() {
     return () => {
       unsubscribeTransactions();
       unsubscribeBudgets();
+      unsubscribeCategories();
       unsubscribeGoals();
       unsubscribeRecurring();
     };
@@ -146,16 +165,33 @@ export default function AiCoachScreen() {
     [budgets, currentMonth],
   );
 
+  const activeExpenseCategories = useMemo(
+    () =>
+      expenseCategories
+        .filter((category) => !category.parentId && category.name)
+        .map((category) => category.name as string),
+    [expenseCategories],
+  );
+
   const aiInsights = useMemo(
     () =>
       buildFinancialIntelligence({
+        activeExpenseCategories:
+          activeExpenseCategories.length > 0 ? activeExpenseCategories : undefined,
         budgets,
         currentAllocations,
         goals,
         recurring: recurringTransactions,
         transactions,
       }),
-    [budgets, currentAllocations, goals, recurringTransactions, transactions],
+    [
+      activeExpenseCategories,
+      budgets,
+      currentAllocations,
+      goals,
+      recurringTransactions,
+      transactions,
+    ],
   );
 
   const purchaseAmount = Number(plannedPurchase) || 0;

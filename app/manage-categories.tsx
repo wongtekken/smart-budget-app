@@ -186,7 +186,7 @@ export default function ManageCategoriesScreen() {
   const handleDelete = async (id: string, name: string, isParent: boolean) => {
     const confirmed = await showConfirm({
       title: "Delete Category",
-      message: `Are you sure you want to delete "${name}"? ${
+      message: `Are you sure you want to delete "${name}"? Historical transactions will stay unchanged, but this category will no longer appear in active budgets or AI category insights. ${
         isParent ? "All subcategories inside will also be deleted." : ""
       }`,
       confirmLabel: "Delete",

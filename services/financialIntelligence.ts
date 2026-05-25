@@ -101,6 +101,41 @@ const getParentCategory = (category?: string) =>
 
 const getAmount = (value?: number | string) => Number(value) || 0;
 
+const getActiveCategorySet = (activeExpenseCategories?: string[]) => {
+  if (!activeExpenseCategories?.length) return null;
+
+  return new Set(
+    activeExpenseCategories
+      .map((category) => category.trim())
+      .filter(Boolean),
+  );
+};
+
+const isActiveCategory = (category: string, activeCategorySet: Set<string> | null) =>
+  !activeCategorySet || activeCategorySet.has(category);
+
+const filterCategoryAmounts = (
+  values: Record<string, number>,
+  activeCategorySet: Set<string> | null,
+) => {
+  if (!activeCategorySet) return values;
+
+  return Object.fromEntries(
+    Object.entries(values).filter(([category]) => activeCategorySet.has(category)),
+  );
+};
+
+const filterCategorySeries = (
+  values: Record<string, number[]>,
+  activeCategorySet: Set<string> | null,
+) => {
+  if (!activeCategorySet) return values;
+
+  return Object.fromEntries(
+    Object.entries(values).filter(([category]) => activeCategorySet.has(category)),
+  );
+};
+
 export const getLocalDateStr = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
@@ -262,7 +297,10 @@ const createAbnormalSpending = (
     })
     .filter(Boolean) as InsightItem[];
 
-const createWeekendPatterns = (transactions: TransactionRecord[]) => {
+const createWeekendPatterns = (
+  transactions: TransactionRecord[],
+  activeCategorySet: Set<string> | null,
+) => {
   const stats: Record<
     string,
     { weekdayAmount: number; weekdayDays: Set<string>; weekendAmount: number; weekendDays: Set<string> }
@@ -272,6 +310,8 @@ const createWeekendPatterns = (transactions: TransactionRecord[]) => {
     const parsed = parseDate(tx.date);
     if (!parsed) return;
     const category = getParentCategory(tx.category);
+    if (!isActiveCategory(category, activeCategorySet)) return;
+
     const day = parsed.getDay();
     const isWeekend = day === 0 || day === 6;
 
@@ -313,9 +353,19 @@ const createWeekendPatterns = (transactions: TransactionRecord[]) => {
     .filter(Boolean) as InsightItem[];
 };
 
-const createLifestyleChanges = (transactions: TransactionRecord[], now: Date) => {
-  const recent = getLastDaysSpendByCategory(transactions, now, 30);
-  const prior = getPriorDaysSpendByCategory(transactions, now, 30, 90);
+const createLifestyleChanges = (
+  transactions: TransactionRecord[],
+  now: Date,
+  activeCategorySet: Set<string> | null,
+) => {
+  const recent = filterCategoryAmounts(
+    getLastDaysSpendByCategory(transactions, now, 30),
+    activeCategorySet,
+  );
+  const prior = filterCategoryAmounts(
+    getPriorDaysSpendByCategory(transactions, now, 30, 90),
+    activeCategorySet,
+  );
   const categories = new Set([...Object.keys(recent), ...Object.keys(prior)]);
 
   return Array.from(categories)
@@ -470,14 +520,20 @@ const createUnderspentRecommendations = (
   budgets: MonthlyBudgetRecord[],
   transactions: TransactionRecord[],
   currentMonth: string,
+  activeCategorySet: Set<string> | null,
 ) => {
   const months = getMonthRange(currentMonth, BASELINE_MONTHS);
   const byCategory: Record<string, { allocated: number[]; spent: number[] }> = {};
 
   months.forEach((month) => {
     const budget = getBudgetForMonth(budgets, month);
-    const spent = getSpendByCategoryForMonth(transactions, month);
+    const spent = filterCategoryAmounts(
+      getSpendByCategoryForMonth(transactions, month),
+      activeCategorySet,
+    );
     Object.keys({ ...budget, ...spent }).forEach((category) => {
+      if (!isActiveCategory(category, activeCategorySet)) return;
+
       byCategory[category] ||= { allocated: [], spent: [] };
       byCategory[category].allocated.push(Number(budget[category] || 0));
       byCategory[category].spent.push(spent[category] || 0);
@@ -621,6 +677,7 @@ export const createReactiveBudgetAlert = (
 };
 
 export const buildFinancialIntelligence = ({
+  activeExpenseCategories,
   budgets,
   currentAllocations,
   goals,
@@ -628,6 +685,7 @@ export const buildFinancialIntelligence = ({
   recurring,
   transactions,
 }: {
+  activeExpenseCategories?: string[];
   budgets: MonthlyBudgetRecord[];
   currentAllocations: Record<string, number>;
   goals: GoalRecord[];
@@ -637,12 +695,20 @@ export const buildFinancialIntelligence = ({
 }): FinancialIntelligenceResult => {
   const currentMonth = getLocalMonthStr(now);
   const baselineMonths = getMonthRange(currentMonth, BASELINE_MONTHS);
-  const currentSpendByCategory = getSpendByCategoryForMonth(transactions, currentMonth);
-  const baselineSeries = getMonthlySeriesByCategory(transactions, baselineMonths);
+  const activeCategorySet = getActiveCategorySet(activeExpenseCategories);
+  const currentSpendByCategory = filterCategoryAmounts(
+    getSpendByCategoryForMonth(transactions, currentMonth),
+    activeCategorySet,
+  );
+  const activeAllocations = filterCategoryAmounts(currentAllocations, activeCategorySet);
+  const baselineSeries = filterCategorySeries(
+    getMonthlySeriesByCategory(transactions, baselineMonths),
+    activeCategorySet,
+  );
   const abnormalSpending = createAbnormalSpending(currentSpendByCategory, baselineSeries);
-  const weekendPatterns = createWeekendPatterns(transactions);
-  const lifestyleChanges = createLifestyleChanges(transactions, now);
-  const budgetProgress = getBudgetProgress(currentSpendByCategory, currentAllocations);
+  const weekendPatterns = createWeekendPatterns(transactions, activeCategorySet);
+  const lifestyleChanges = createLifestyleChanges(transactions, now, activeCategorySet);
+  const budgetProgress = getBudgetProgress(currentSpendByCategory, activeAllocations);
   const reactiveAlerts = budgetProgress
     .filter((item) => item.allocated > 0 && item.progress >= 0.8)
     .map((item) => ({
@@ -658,20 +724,25 @@ export const buildFinancialIntelligence = ({
       title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
     }));
 
-  const budgetTransfers = createBudgetTransfers(currentSpendByCategory, currentAllocations);
+  const budgetTransfers = createBudgetTransfers(currentSpendByCategory, activeAllocations);
   const unusedBudgetOpportunities = createUnusedBudgetOpportunities(
     currentSpendByCategory,
-    currentAllocations,
+    activeAllocations,
   );
-  const underspentRecommendations = createUnderspentRecommendations(budgets, transactions, currentMonth);
+  const underspentRecommendations = createUnderspentRecommendations(
+    budgets,
+    transactions,
+    currentMonth,
+    activeCategorySet,
+  );
   const savingOpportunities = createSavingOpportunities(
     currentSpendByCategory,
-    currentAllocations,
+    activeAllocations,
     recurring,
   );
   const goalRecommendations = createGoalRecommendations(
     currentSpendByCategory,
-    currentAllocations,
+    activeAllocations,
     goals,
     now,
   );
