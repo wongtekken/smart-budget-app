@@ -34,10 +34,16 @@ export type InsightSeverity = "info" | "success" | "warning" | "danger";
 
 export type InsightItem = {
   amount?: number;
+  baselineAmount?: number;
   category?: string;
+  confidence?: "Low" | "Medium" | "High";
+  currentAmount?: number;
   description: string;
+  differenceAmount?: number;
+  differencePercent?: number;
   impact?: number;
   metric?: string;
+  reason?: string;
   severity: InsightSeverity;
   title: string;
 };
@@ -52,7 +58,10 @@ export type CategoryBehaviorItem = {
   averageMonthly: number;
   behavior: CategoryBehavior;
   category: string;
+  confidence?: "Low" | "Medium" | "High";
+  currentAmount?: number;
   description: string;
+  reason?: string;
 };
 
 export type BudgetTransferSuggestion = {
@@ -287,10 +296,16 @@ const createAbnormalSpending = (
 
       return {
         amount: current,
+        baselineAmount: baseline,
         category,
+        confidence: ratio >= 2 || increase >= 100 ? ("High" as const) : ("Medium" as const),
+        currentAmount: current,
         description: `${category} is RM ${increase.toFixed(0)} above your personal monthly baseline.`,
+        differenceAmount: increase,
+        differencePercent: (ratio - 1) * 100,
         impact: increase,
         metric: `+${Math.round((ratio - 1) * 100)}% vs baseline`,
+        reason: "Current month spending is compared with the user's previous 3-month category baseline.",
         severity: "danger" as const,
         title: "Abnormal spending detected",
       };
@@ -342,10 +357,16 @@ const createWeekendPatterns = (
 
       return {
         amount: item.weekendAmount,
+        baselineAmount: weekdayAvg,
         category,
+        confidence: ratio >= 2 ? ("High" as const) : ("Medium" as const),
+        currentAmount: weekendAvg,
         description: `${category} spending is noticeably higher on weekends than weekdays.`,
+        differenceAmount: weekendAvg - weekdayAvg,
+        differencePercent: ratio >= 99 ? undefined : (ratio - 1) * 100,
         impact: weekendAvg - weekdayAvg,
         metric: `${ratio >= 99 ? "High" : `${ratio.toFixed(1)}x`} weekend intensity`,
+        reason: "Average weekend spending per active day is compared with weekday spending.",
         severity: "warning" as const,
         title: "Weekend-sensitive pattern",
       };
@@ -380,10 +401,16 @@ const createLifestyleChanges = (
       const direction = diff > 0 ? "increased" : "decreased";
       return {
         amount: recent[category] || 0,
+        baselineAmount: priorDaily * 30,
         category,
+        confidence: ratio >= 2 || ratio <= 0.4 ? ("High" as const) : ("Medium" as const),
+        currentAmount: recent[category] || 0,
         description: `${category} has ${direction} compared with your earlier 90-day pattern.`,
+        differenceAmount: diff * 30,
+        differencePercent: priorDaily > 0 ? (ratio - 1) * 100 : undefined,
         impact: diff * 30,
         metric: `${diff > 0 ? "+" : ""}RM ${(diff * 30).toFixed(0)} monthly pace`,
+        reason: "Recent 30-day spending pace is compared with the earlier 90-day pattern.",
         severity: diff > 0 ? ("warning" as const) : ("info" as const),
         title: "Possible lifestyle adjustment",
       };
@@ -412,7 +439,8 @@ const createCategoryBehaviors = (
       const cv = avg > 0 ? standardDeviation(series) / avg : 0;
       const isAbnormal = abnormalSpending.some((item) => item.category === category);
       const isWeekend = weekendPatterns.some((item) => item.category === category);
-      const progress = budgetProgress.find((item) => item.category === category)?.progress || 0;
+      const progressItem = budgetProgress.find((item) => item.category === category);
+      const progress = progressItem?.progress || 0;
       const firstHalf = average(series.slice(Math.ceil(series.length / 2)));
       const secondHalf = average(series.slice(0, Math.ceil(series.length / 2)));
       const isGrowing = secondHalf > firstHalf * 1.25 && secondHalf - firstHalf > 20;
@@ -422,7 +450,12 @@ const createCategoryBehaviors = (
           averageMonthly: avg,
           behavior: "Risk Category" as const,
           category,
+          confidence: progress >= 1 || isAbnormal ? ("High" as const) : ("Medium" as const),
+          currentAmount: progressItem?.spent || 0,
           description: `${category} needs attention because spending is close to budget or above baseline.`,
+          reason: progress >= 0.85
+            ? "Current spending is close to or above this category's budget."
+            : "Current spending is above the user's personal baseline.",
         };
       }
 
@@ -431,7 +464,10 @@ const createCategoryBehaviors = (
           averageMonthly: avg,
           behavior: "Weekend-Sensitive Spending" as const,
           category,
+          confidence: "Medium" as const,
+          currentAmount: progressItem?.spent || 0,
           description: `${category} tends to rise during weekends.`,
+          reason: "Weekend spending intensity is higher than weekday spending.",
         };
       }
 
@@ -440,7 +476,10 @@ const createCategoryBehaviors = (
           averageMonthly: avg,
           behavior: "Growing Spending" as const,
           category,
+          confidence: "Medium" as const,
+          currentAmount: progressItem?.spent || 0,
           description: `${category} is trending upward compared with earlier months.`,
+          reason: "Recent monthly baseline is higher than earlier monthly baseline.",
         };
       }
 
@@ -448,8 +487,14 @@ const createCategoryBehaviors = (
         averageMonthly: avg,
         behavior: "Stable Spending" as const,
         category,
+        confidence: cv <= 0.3 ? ("High" as const) : ("Medium" as const),
+        currentAmount: progressItem?.spent || 0,
         description:
           cv <= 0.3 ? `${category} is relatively consistent.` : `${category} varies, but no major risk is detected.`,
+        reason:
+          cv <= 0.3
+            ? "Monthly category spending has low variation."
+            : "Variation exists, but no budget or baseline risk threshold was crossed.",
       };
     })
     .sort((a, b) => {
@@ -556,10 +601,16 @@ const createUnderspentRecommendations = (
 
       return {
         amount: avgUnused,
+        baselineAmount: average(allocated),
         category,
+        confidence: avgUnused >= 50 ? ("High" as const) : ("Medium" as const),
+        currentAmount: average(spent),
         description: `${category} has stayed at least 30% under budget for 3 months. Consider lowering it and moving around RM ${avgUnused.toFixed(0)} elsewhere.`,
+        differenceAmount: avgUnused,
+        differencePercent: avgUnused / Math.max(average(allocated), 1) * 100,
         impact: avgUnused,
         metric: `RM ${avgUnused.toFixed(0)} average unused`,
+        reason: "This category stayed at least 30% under budget for each of the last 3 months.",
         severity: "success" as const,
         title: "Consistently underspent budget",
       };
@@ -589,10 +640,16 @@ const createSavingOpportunities = (
 
       return {
         amount: saving,
+        baselineAmount: allocated,
         category,
+        confidence: saving >= 50 ? ("High" as const) : ("Medium" as const),
+        currentAmount: spent,
         description: `Reducing ${category} by about 20% could save around RM ${saving.toFixed(0)} this month.`,
+        differenceAmount: saving,
+        differencePercent: spent > 0 ? (saving / spent) * 100 : undefined,
         impact: saving,
         metric: `Potential RM ${saving.toFixed(0)} saving`,
+        reason: "Flexible non-recurring spending is high enough to support a practical reduction.",
         severity: "success" as const,
         title: "Saving opportunity",
       };
@@ -627,10 +684,16 @@ const createGoalRecommendations = (
   return [
     {
       amount: source.remaining,
+      baselineAmount: Number(currentAllocations[source.category] || 0),
       category: source.category,
+      confidence: source.remaining >= 50 ? ("High" as const) : ("Medium" as const),
+      currentAmount: currentSpendByCategory[source.category] || 0,
       description: `You still have RM ${source.remaining.toFixed(0)} unused in ${source.category}. Consider moving part of it to your ${goal.title || "saving"} goal before the cycle ends.`,
+      differenceAmount: source.remaining,
+      differencePercent: source.remaining / Math.max(Number(currentAllocations[source.category] || 0), 1) * 100,
       impact: source.remaining,
       metric: "Goal-aware recommendation",
+      reason: "Unused category budget is available near month end and an active financial goal exists.",
       severity: "success" as const,
       title: "Move unused funds to savings",
     },
@@ -652,9 +715,14 @@ export const createReactiveBudgetAlert = (
   if (allocated <= 0) {
     return {
       amount: getAmount(transaction.amount),
+      baselineAmount: 0,
       category,
+      confidence: "Medium" as const,
+      currentAmount: spent,
       description: `${category} has no budget set. Add a budget so future spending can be tracked more accurately.`,
+      differenceAmount: spent,
       metric: "Unbudgeted category",
+      reason: "This category has spending but no assigned budget for the transaction month.",
       severity: "warning" as const,
       title: "Reactive budget alert",
     };
@@ -665,12 +733,18 @@ export const createReactiveBudgetAlert = (
 
   return {
     amount: spent,
+    baselineAmount: allocated,
     category,
+    confidence: progress >= 1 ? ("High" as const) : ("Medium" as const),
+    currentAmount: spent,
     description:
       progress >= 1
         ? `This transaction pushes ${category} over budget at ${Math.round(progress * 100)}%. Consider limiting this category or transferring unused budget.`
         : `This transaction puts ${category} at ${Math.round(progress * 100)}% of its budget. Spend carefully for the rest of the month.`,
+    differenceAmount: spent - allocated,
+    differencePercent: progress * 100,
     metric: `${Math.round(progress * 100)}% budget used`,
+    reason: "This alert is calculated immediately after the transaction is saved.",
     severity: progress >= 1 ? ("danger" as const) : ("warning" as const),
     title: "Reactive budget alert",
   };
@@ -713,13 +787,19 @@ export const buildFinancialIntelligence = ({
     .filter((item) => item.allocated > 0 && item.progress >= 0.8)
     .map((item) => ({
       amount: item.spent,
+      baselineAmount: item.allocated,
       category: item.category,
+      confidence: item.progress >= 1 ? ("High" as const) : ("Medium" as const),
+      currentAmount: item.spent,
       description:
         item.progress >= 1
           ? `${item.category} is over budget by RM ${Math.abs(item.remaining).toFixed(0)}.`
           : `${item.category} has used ${Math.round(item.progress * 100)}% of its budget.`,
+      differenceAmount: item.spent - item.allocated,
+      differencePercent: item.progress * 100,
       impact: item.remaining,
       metric: `${Math.round(item.progress * 100)}% used`,
+      reason: "Current month category spending is compared with the assigned category budget.",
       severity: item.progress >= 1 ? ("danger" as const) : ("warning" as const),
       title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
     }));

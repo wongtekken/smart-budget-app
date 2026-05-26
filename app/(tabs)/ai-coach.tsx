@@ -30,6 +30,7 @@ import {
   buildFinancialIntelligence,
   BudgetTransferSuggestion,
   GoalRecord,
+  InsightItem,
   InsightSeverity,
   MonthlyBudgetRecord,
   RecurringRecord,
@@ -63,18 +64,85 @@ const getSeverityColor = (severity: InsightSeverity) => {
   return palette.primary;
 };
 
+const formatAmount = (value?: number) =>
+  typeof value === "number" && Number.isFinite(value) ? `RM ${value.toFixed(0)}` : "";
+
+const formatPercent = (value?: number) =>
+  typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(0)}%` : "";
+
+const parsePurchaseQuery = (queryText: string) => {
+  const text = queryText.trim();
+  if (!text) return { amount: 0, label: "planned purchase", warning: "" };
+
+  const rmMatch =
+    text.match(/rm\s*([0-9][0-9,]*(?:\.\d+)?)/i) ||
+    text.match(/([0-9][0-9,]*(?:\.\d+)?)\s*rm/i);
+  const numberMatches = Array.from(text.matchAll(/[0-9][0-9,]*(?:\.\d+)?/g));
+  const chosenMatch = rmMatch
+    ? { index: rmMatch.index || 0, value: rmMatch[0] }
+    : numberMatches
+        .map((match) => ({
+          index: match.index || 0,
+          value: match[0],
+          amount: Number(match[0].replace(/,/g, "")),
+        }))
+        .filter((match) => match.amount >= 10)
+        .pop();
+  const amountText = rmMatch ? rmMatch[1] : chosenMatch?.value;
+  const amount = Number(String(amountText || "").replace(/,/g, "")) || 0;
+
+  if (amount <= 0) {
+    return {
+      amount: 0,
+      label: "planned purchase",
+      warning: "Include an amount, for example: Can I buy a PS5 for RM2500?",
+    };
+  }
+
+  const amountPhrase = chosenMatch?.value || amountText || "";
+  const label = text
+    .replace(new RegExp(amountPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " ")
+    .replace(/\brm\b/gi, " ")
+    .replace(/\b(can|could|should|may|i|we|buy|afford|get|purchase|spend|on|for|a|an|the|if|want|to|this|that)\b/gi, " ")
+    .replace(/[?!.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return { amount, label: label || "planned purchase", warning: "" };
+};
+
 const InsightCard = ({
+  baselineAmount,
+  confidence,
+  currentAmount,
   description,
+  differenceAmount,
+  differencePercent,
   metric,
+  reason,
   severity,
   title,
-}: {
-  description: string;
-  metric?: string;
-  severity: InsightSeverity;
-  title: string;
-}) => {
+}: Pick<
+  InsightItem,
+  | "baselineAmount"
+  | "confidence"
+  | "currentAmount"
+  | "description"
+  | "differenceAmount"
+  | "differencePercent"
+  | "metric"
+  | "reason"
+  | "severity"
+  | "title"
+>) => {
   const color = getSeverityColor(severity);
+  const evidence = [
+    currentAmount !== undefined ? { label: "Current", value: formatAmount(currentAmount) } : null,
+    baselineAmount !== undefined ? { label: "Baseline", value: formatAmount(baselineAmount) } : null,
+    differenceAmount !== undefined ? { label: "Diff", value: formatAmount(differenceAmount) } : null,
+    differencePercent !== undefined ? { label: "Change", value: formatPercent(differencePercent) } : null,
+    confidence ? { label: "Confidence", value: confidence } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <View style={styles.insightCard}>
@@ -82,6 +150,17 @@ const InsightCard = ({
       <View style={styles.insightBody}>
         <Text style={styles.insightTitle}>{title}</Text>
         <Text style={styles.insightDescription}>{description}</Text>
+        {evidence.length > 0 ? (
+          <View style={styles.evidenceRow}>
+            {evidence.map((item) => (
+              <View key={`${item.label}-${item.value}`} style={styles.evidencePill}>
+                <Text style={styles.evidenceLabel}>{item.label}</Text>
+                <Text style={styles.evidenceValue}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {reason ? <Text style={styles.reasonText}>{reason}</Text> : null}
         {metric ? <Text style={[styles.metricText, { color }]}>{metric}</Text> : null}
       </View>
     </View>
@@ -102,6 +181,7 @@ export default function AiCoachScreen() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [transferInProgress, setTransferInProgress] = useState(false);
   const [rolloverInProgress, setRolloverInProgress] = useState(false);
+  const [savingActionInProgress, setSavingActionInProgress] = useState(false);
   const [expandedSection, setExpandedSection] = useState<
     "coach" | "review" | "patterns" | "categories" | "actions" | null
   >(null);
@@ -194,13 +274,14 @@ export default function AiCoachScreen() {
     ],
   );
 
-  const purchaseAmount = Number(plannedPurchase) || 0;
+  const purchaseQuery = useMemo(() => parsePurchaseQuery(plannedPurchase), [plannedPurchase]);
+  const purchaseAmount = purchaseQuery.amount;
   const purchaseSimulation = useMemo(
     () =>
       purchaseAmount > 0
-        ? aiInsights.whatIfSimulation(purchaseAmount, "planned purchase")
+        ? aiInsights.whatIfSimulation(purchaseAmount, purchaseQuery.label)
         : null,
-    [aiInsights, purchaseAmount],
+    [aiInsights, purchaseAmount, purchaseQuery.label],
   );
   const insightCards = [
     ...aiInsights.abnormalSpending,
@@ -209,7 +290,6 @@ export default function AiCoachScreen() {
   ].slice(0, 5);
   const coachCards = [
     ...aiInsights.reactiveAlerts,
-    ...aiInsights.savingOpportunities,
     ...aiInsights.underspentRecommendations,
     ...aiInsights.goalRecommendations,
   ].slice(0, 6);
@@ -483,6 +563,94 @@ export default function AiCoachScreen() {
     );
   };
 
+  const executeSavingBudgetAction = async (
+    opportunity: InsightItem,
+    mode: "reduce" | "goal",
+  ) => {
+    if (savingActionInProgress) return;
+
+    const user = auth.currentUser;
+    const category = opportunity.category || "";
+    const currentAllocated = Number(currentAllocations[category] || 0);
+    const currentSpent = Number(opportunity.currentAmount || 0);
+    const requestedSaving = Number((opportunity.amount || opportunity.impact || 0).toFixed(2));
+    const availableReduction = Number(Math.max(currentAllocated - currentSpent, 0).toFixed(2));
+    const amount = Number(Math.min(requestedSaving, availableReduction).toFixed(2));
+
+    if (!user) {
+      showDialog({
+        title: "Login Required",
+        message: "Please log in before updating your budget.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (!category || currentAllocated <= 0 || amount <= 0) {
+      showDialog({
+        title: "Saving Action Unavailable",
+        message: "This recommendation can no longer be applied because the budget has changed.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (mode === "goal" && !goalCategoryName) return;
+
+    const confirmed = await showConfirm({
+      title: mode === "goal" ? "Move Saving to Goal" : "Reduce Category Budget",
+      message:
+        mode === "goal"
+          ? `Reduce ${category} by RM ${amount.toFixed(2)} and move it to ${goalCategoryName}?`
+          : `Reduce ${category} budget by RM ${amount.toFixed(2)}?`,
+      confirmLabel: mode === "goal" ? "Move" : "Reduce",
+      type: "confirm",
+    });
+
+    if (!confirmed) return;
+
+    setSavingActionInProgress(true);
+    try {
+      const nextAllocations = {
+        ...currentAllocations,
+        [category]: Number(Math.max(currentAllocated - amount, currentSpent).toFixed(2)),
+      };
+
+      if (mode === "goal") {
+        nextAllocations[goalCategoryName] = Number(
+          (Number(nextAllocations[goalCategoryName] || 0) + amount).toFixed(2),
+        );
+      }
+
+      await setDoc(
+        doc(db, "monthly_budgets", `${user.uid}_${currentMonth}`),
+        {
+          userId: user.uid,
+          month: currentMonth,
+          allocations: nextAllocations,
+        },
+        { merge: true },
+      );
+
+      showDialog({
+        title: mode === "goal" ? "Saving Moved" : "Budget Reduced",
+        message:
+          mode === "goal"
+            ? `RM ${amount.toFixed(2)} was moved from ${category} to ${goalCategoryName}.`
+            : `RM ${amount.toFixed(2)} was released from ${category}.`,
+        type: "success",
+      });
+    } catch {
+      showDialog({
+        title: "Update Failed",
+        message: "Failed to update your budget. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setSavingActionInProgress(false);
+    }
+  };
+
   const SectionToggle = ({
     count,
     section,
@@ -620,24 +788,28 @@ export default function AiCoachScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>What-If Purchase Simulation</Text>
           <View style={styles.simulatorCard}>
-            <Text style={styles.simulatorLabel}>Planned purchase amount</Text>
+            <Text style={styles.simulatorLabel}>Ask about a planned purchase</Text>
             <View style={styles.simulatorInputRow}>
-              <Text style={styles.simulatorPrefix}>RM</Text>
               <TextInput
-                keyboardType="numeric"
                 onChangeText={setPlannedPurchase}
-                placeholder="0.00"
+                placeholder="Can I buy a PS5 for RM2500?"
                 placeholderTextColor={palette.textSoft}
                 style={styles.simulatorInput}
                 value={plannedPurchase}
               />
             </View>
+            {purchaseQuery.warning ? (
+              <Text style={styles.simulatorWarning}>{purchaseQuery.warning}</Text>
+            ) : null}
             {purchaseSimulation ? (
               <InsightCard
+                confidence={purchaseSimulation.severity === "danger" ? "High" : "Medium"}
+                currentAmount={purchaseAmount}
                 description={purchaseSimulation.message}
                 metric={`Projected balance: RM ${purchaseSimulation.projectedBalance.toFixed(0)}`}
+                reason="Simulation uses this month's income, expenses, fixed recurring costs, and the planned purchase amount."
                 severity={purchaseSimulation.severity}
-                title="Purchase impact"
+                title={`Purchase impact: ${purchaseQuery.label}`}
               />
             ) : null}
           </View>
@@ -735,6 +907,16 @@ export default function AiCoachScreen() {
                 <View style={styles.behaviorCopy}>
                   <Text style={styles.behaviorCategory}>{item.category}</Text>
                   <Text style={styles.behaviorDescription}>{item.description}</Text>
+                  <Text style={styles.behaviorEvidence}>
+                    Average RM {item.averageMonthly.toFixed(0)}
+                    {item.currentAmount !== undefined
+                      ? ` · Current RM ${item.currentAmount.toFixed(0)}`
+                      : ""}
+                    {item.confidence ? ` · ${item.confidence} confidence` : ""}
+                  </Text>
+                  {item.reason ? (
+                    <Text style={styles.behaviorReason}>{item.reason}</Text>
+                  ) : null}
                 </View>
                 <Text style={styles.behaviorTag}>{item.behavior}</Text>
               </View>
@@ -744,6 +926,7 @@ export default function AiCoachScreen() {
         <View style={styles.section}>
           <SectionToggle
             count={
+              aiInsights.savingOpportunities.length +
               coachCards.length +
               aiInsights.budgetTransfers.length +
               aiInsights.unusedBudgetOpportunities.length
@@ -819,15 +1002,69 @@ export default function AiCoachScreen() {
                 </View>
               )}
 
+              {aiInsights.savingOpportunities.map((item) => (
+                <View key={`${item.category}-${item.title}`} style={styles.savingActionCard}>
+                  <View style={styles.transferHeader}>
+                    <View style={styles.savingIcon}>
+                      <Ionicons name="leaf-outline" size={22} color={palette.success} />
+                    </View>
+                    <View style={styles.transferSummary}>
+                      <Text style={styles.savingTitle}>
+                        Save RM {Number(item.amount || 0).toFixed(2)}
+                      </Text>
+                      <Text style={styles.transferRoute} numberOfLines={1}>
+                        {item.category}
+                      </Text>
+                    </View>
+                  </View>
+                  <InsightCard {...item} />
+                  <View style={styles.savingActions}>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      disabled={savingActionInProgress}
+                      onPress={() => executeSavingBudgetAction(item, "reduce")}
+                      style={[
+                        styles.savingButton,
+                        savingActionInProgress && styles.transferButtonDisabled,
+                      ]}
+                    >
+                      {savingActionInProgress ? (
+                        <ActivityIndicator color="#FFF" />
+                      ) : (
+                        <>
+                          <Ionicons name="remove-circle" size={18} color="#FFF" />
+                          <Text style={styles.savingButtonText}>Reduce Budget</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    {goalCategoryName ? (
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={savingActionInProgress}
+                        onPress={() => executeSavingBudgetAction(item, "goal")}
+                        style={[
+                          styles.savingSecondaryButton,
+                          savingActionInProgress && styles.transferButtonDisabled,
+                        ]}
+                      >
+                        <Ionicons name="flag-outline" size={18} color={palette.success} />
+                        <Text style={styles.savingSecondaryButtonText}>Move to Goal</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+
               {coachCards.length > 0 ? (
                 coachCards.map((item, index) => (
                   <InsightCard key={`${item.title}-${index}`} {...item} />
                 ))
-              ) : (
+              ) : aiInsights.savingOpportunities.length === 0 ? (
                 <Text style={styles.emptyText}>
                   No urgent action is needed. Keep recording transactions for stronger guidance.
                 </Text>
-              )}
+              ) : null}
 
               {aiInsights.budgetTransfers.map((item) => (
                 <View key={`${item.fromCategory}-${item.toCategory}`} style={styles.transferCard}>
@@ -1162,6 +1399,40 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 20,
   },
+  evidenceRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 10,
+  },
+  evidencePill: {
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginBottom: 6,
+    marginRight: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  evidenceLabel: {
+    color: palette.textMuted,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  evidenceValue: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  reasonText: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 8,
+  },
   metricText: {
     fontSize: 12,
     fontWeight: "900",
@@ -1196,6 +1467,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 19,
     marginTop: 4,
+  },
+  behaviorEvidence: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 7,
+  },
+  behaviorReason: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 5,
   },
   behaviorTag: {
     alignSelf: "flex-start",
@@ -1246,6 +1530,66 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 20,
+  },
+  savingActionCard: {
+    backgroundColor: palette.successSoft,
+    borderColor: "#CFEBD7",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 14,
+  },
+  savingIcon: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 36,
+  },
+  savingTitle: {
+    color: palette.success,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  savingActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 2,
+  },
+  savingButton: {
+    alignItems: "center",
+    backgroundColor: palette.success,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    marginRight: 8,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  savingButtonText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 6,
+  },
+  savingSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: "#CFEBD7",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  savingSecondaryButtonText: {
+    color: palette.success,
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 6,
   },
   transferButton: {
     alignItems: "center",
@@ -1393,7 +1737,14 @@ const styles = StyleSheet.create({
   simulatorInput: {
     color: palette.text,
     flex: 1,
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  simulatorWarning: {
+    color: palette.warning,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+    marginBottom: 10,
   },
 });
