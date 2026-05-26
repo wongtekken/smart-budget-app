@@ -125,14 +125,12 @@ export const scanReceiptImage = async (
 export const generateFinancialCoach = async (
   month: string,
   insights: Record<string, unknown>,
-  purchaseSimulation?: Record<string, unknown> | null,
 ) => {
   return postJson<FinancialCoachResponse>(
     "/generate-financial-coach",
     {
       month,
       insights,
-      purchaseSimulation: purchaseSimulation || null,
     },
     45000,
   );

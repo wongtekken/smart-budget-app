@@ -79,12 +79,6 @@ export type UnusedBudgetOpportunity = {
   unusedAmount: number;
 };
 
-export type WhatIfSimulation = {
-  message: string;
-  projectedBalance: number;
-  severity: InsightSeverity;
-};
-
 export type FinancialIntelligenceResult = {
   abnormalSpending: InsightItem[];
   budgetTransfers: BudgetTransferSuggestion[];
@@ -97,7 +91,6 @@ export type FinancialIntelligenceResult = {
   underspentRecommendations: InsightItem[];
   unusedBudgetOpportunities: UnusedBudgetOpportunity[];
   weekendPatterns: InsightItem[];
-  whatIfSimulation: (purchaseAmount: number, purchaseLabel?: string) => WhatIfSimulation;
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -833,11 +826,6 @@ export const buildFinancialIntelligence = ({
     budgetProgress,
   );
 
-  const currentIncome = getTotalForMonth(transactions, currentMonth, "income");
-  const currentExpense = getTotalForMonth(transactions, currentMonth, "expense");
-  const fixedRecurringExpense = recurring
-    .filter((item) => item.isActive !== false && normalizeType(item.type) === "expense")
-    .reduce((sum, item) => sum + getAmount(item.amount), 0);
   const monthlyReview = [
     abnormalSpending[0]?.description || "No major abnormal spending was detected this month.",
     reactiveAlerts[0]?.description || "No category is currently above the budget risk threshold.",
@@ -857,22 +845,5 @@ export const buildFinancialIntelligence = ({
     underspentRecommendations,
     unusedBudgetOpportunities,
     weekendPatterns,
-    whatIfSimulation: (purchaseAmount: number, purchaseLabel = "this purchase") => {
-      const projectedBalance = currentIncome - currentExpense - purchaseAmount - fixedRecurringExpense;
-
-      if (projectedBalance < 0) {
-        return {
-          message: `If you spend RM ${purchaseAmount.toFixed(0)} on ${purchaseLabel}, your projected month-end balance may become negative by RM ${Math.abs(projectedBalance).toFixed(0)}.`,
-          projectedBalance,
-          severity: "danger",
-        };
-      }
-
-      return {
-        message: `If you spend RM ${purchaseAmount.toFixed(0)} on ${purchaseLabel}, your projected month-end balance is about RM ${projectedBalance.toFixed(0)}.`,
-        projectedBalance,
-        severity: projectedBalance < currentIncome * 0.1 ? "warning" : "success",
-      };
-    },
   };
 };

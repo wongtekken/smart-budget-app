@@ -15,7 +15,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -83,47 +82,6 @@ const formatAmount = (value?: number) =>
 const formatPercent = (value?: number) =>
   typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(0)}%` : "";
 
-const parsePurchaseQuery = (queryText: string) => {
-  const text = queryText.trim();
-  if (!text) return { amount: 0, label: "planned purchase", warning: "" };
-
-  const rmMatch =
-    text.match(/rm\s*([0-9][0-9,]*(?:\.\d+)?)/i) ||
-    text.match(/([0-9][0-9,]*(?:\.\d+)?)\s*rm/i);
-  const numberMatches = Array.from(text.matchAll(/[0-9][0-9,]*(?:\.\d+)?/g));
-  const chosenMatch = rmMatch
-    ? { index: rmMatch.index || 0, value: rmMatch[0] }
-    : numberMatches
-        .map((match) => ({
-          index: match.index || 0,
-          value: match[0],
-          amount: Number(match[0].replace(/,/g, "")),
-        }))
-        .filter((match) => match.amount >= 10)
-        .pop();
-  const amountText = rmMatch ? rmMatch[1] : chosenMatch?.value;
-  const amount = Number(String(amountText || "").replace(/,/g, "")) || 0;
-
-  if (amount <= 0) {
-    return {
-      amount: 0,
-      label: "planned purchase",
-      warning: "Include an amount, for example: Can I buy a PS5 for RM2500?",
-    };
-  }
-
-  const amountPhrase = chosenMatch?.value || amountText || "";
-  const label = text
-    .replace(new RegExp(amountPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " ")
-    .replace(/\brm\b/gi, " ")
-    .replace(/\b(can|could|should|may|i|we|buy|afford|get|purchase|spend|on|for|a|an|the|if|want|to|this|that)\b/gi, " ")
-    .replace(/[?!.,]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return { amount, label: label || "planned purchase", warning: "" };
-};
-
 const InsightCard = ({
   baselineAmount,
   confidence,
@@ -188,7 +146,6 @@ export default function AiCoachScreen() {
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryRecord[]>([]);
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringRecord[]>([]);
-  const [plannedPurchase, setPlannedPurchase] = useState("");
   const [coachResponse, setCoachResponse] = useState<FinancialCoachResponse | null>(null);
   const [coachError, setCoachError] = useState("");
   const [coachLoading, setCoachLoading] = useState(false);
@@ -287,15 +244,6 @@ export default function AiCoachScreen() {
     ],
   );
 
-  const purchaseQuery = useMemo(() => parsePurchaseQuery(plannedPurchase), [plannedPurchase]);
-  const purchaseAmount = purchaseQuery.amount;
-  const purchaseSimulation = useMemo(
-    () =>
-      purchaseAmount > 0
-        ? aiInsights.whatIfSimulation(purchaseAmount, purchaseQuery.label)
-        : null,
-    [aiInsights, purchaseAmount, purchaseQuery.label],
-  );
   const insightCards = [
     ...aiInsights.abnormalSpending,
     ...aiInsights.weekendPatterns,
@@ -359,7 +307,7 @@ export default function AiCoachScreen() {
       setCoachLoading(true);
       setCoachError("");
 
-      generateFinancialCoach(currentMonth, coachPayload, purchaseSimulation)
+      generateFinancialCoach(currentMonth, coachPayload)
         .then((response) => {
           if (isActive) setCoachResponse(response);
         })
@@ -380,7 +328,7 @@ export default function AiCoachScreen() {
       isActive = false;
       clearTimeout(timeoutId);
     };
-  }, [coachPayload, currentMonth, purchaseSimulation, transactions.length]);
+  }, [coachPayload, currentMonth, transactions.length]);
 
   const toggleSection = (
     section: "coach" | "review" | "patterns" | "categories" | "actions",
@@ -901,36 +849,6 @@ export default function AiCoachScreen() {
                 personal baseline.
               </Text>
             )}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ask Coach</Text>
-          <View style={styles.simulatorCard}>
-            <Text style={styles.simulatorLabel}>Ask about a planned purchase</Text>
-            <View style={styles.simulatorInputRow}>
-              <TextInput
-                onChangeText={setPlannedPurchase}
-                placeholder="Can I buy a PS5 for RM2500?"
-                placeholderTextColor={palette.textSoft}
-                style={styles.simulatorInput}
-                value={plannedPurchase}
-              />
-            </View>
-            {purchaseQuery.warning ? (
-              <Text style={styles.simulatorWarning}>{purchaseQuery.warning}</Text>
-            ) : null}
-            {purchaseSimulation ? (
-              <InsightCard
-                confidence={purchaseSimulation.severity === "danger" ? "High" : "Medium"}
-                currentAmount={purchaseAmount}
-                description={purchaseSimulation.message}
-                metric={`Projected balance: RM ${purchaseSimulation.projectedBalance.toFixed(0)}`}
-                reason="Simulation uses this month's income, expenses, fixed recurring costs, and the planned purchase amount."
-                severity={purchaseSimulation.severity}
-                title={`Purchase impact: ${purchaseQuery.label}`}
-              />
-            ) : null}
           </View>
         </View>
 
@@ -2003,49 +1921,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     marginLeft: 6,
-  },
-  simulatorCard: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 14,
-    ...shadow.subtle,
-  },
-  simulatorLabel: {
-    color: palette.textMuted,
-    fontSize: 13,
-    fontWeight: "900",
-    marginBottom: 8,
-  },
-  simulatorInputRow: {
-    alignItems: "center",
-    backgroundColor: palette.surfaceMuted,
-    borderColor: palette.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    height: 54,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-  },
-  simulatorPrefix: {
-    color: palette.primary,
-    fontSize: 18,
-    fontWeight: "900",
-    marginRight: 8,
-  },
-  simulatorInput: {
-    color: palette.text,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  simulatorWarning: {
-    color: palette.warning,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginBottom: 10,
   },
 });
