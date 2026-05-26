@@ -45,6 +45,19 @@ type ExpenseCategoryRecord = {
   parentId?: string | null;
 };
 
+type FocusTone = "danger" | "success" | "warning" | "primary";
+
+type FocusItem = {
+  actionLabel?: string;
+  description: string;
+  disabled?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  meta: string;
+  onPress?: () => void;
+  title: string;
+  tone: FocusTone;
+};
+
 const getLocalDateStr = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
@@ -651,6 +664,128 @@ export default function AiCoachScreen() {
     }
   };
 
+  const firstTransfer = aiInsights.budgetTransfers[0];
+  const firstUnusedBudget = aiInsights.unusedBudgetOpportunities[0];
+  const firstSavingOpportunity = aiInsights.savingOpportunities[0];
+  const focusItems: FocusItem[] = [
+    firstTransfer
+      ? {
+          actionLabel: "Transfer",
+          description: firstTransfer.message,
+          disabled: transferInProgress,
+          icon: "swap-horizontal",
+          meta: `${firstTransfer.fromCategory} to ${firstTransfer.toCategory}`,
+          onPress: () => handleBudgetTransfer(firstTransfer),
+          title: `Move RM ${firstTransfer.amount.toFixed(0)}`,
+          tone: "primary",
+        }
+      : null,
+    firstUnusedBudget
+      ? {
+          actionLabel: "Carry",
+          description: firstUnusedBudget.message,
+          disabled: rolloverInProgress,
+          icon: "archive-outline",
+          meta: `${firstUnusedBudget.category} has unused budget`,
+          onPress: () => handleCarryUnusedBudget(firstUnusedBudget),
+          title: `Carry RM ${firstUnusedBudget.unusedAmount.toFixed(0)}`,
+          tone: "success",
+        }
+      : null,
+    firstSavingOpportunity
+      ? {
+          actionLabel: "Review",
+          description: firstSavingOpportunity.description,
+          disabled: savingActionInProgress,
+          icon: "leaf-outline",
+          meta: firstSavingOpportunity.category || "Saving opportunity",
+          onPress: () => executeSavingBudgetAction(firstSavingOpportunity, "reduce"),
+          title: firstSavingOpportunity.title,
+          tone: "success",
+        }
+      : null,
+    {
+      description: primaryAction,
+      icon: highRiskCount > 0 ? "warning-outline" : "sparkles-outline",
+      meta: coachResponse ? `${coachResponse.tone} coaching` : "Rule-based guidance",
+      title: highRiskCount > 0 ? "Review this month's risk" : "Keep building your baseline",
+      tone: highRiskCount > 0 ? "warning" : "primary",
+    },
+  ].filter(Boolean).slice(0, 3) as FocusItem[];
+
+  const compactSignals = [...insightCards, ...aiInsights.reactiveAlerts].slice(0, 3);
+  const coachStateTitle = highRiskCount > 0 ? "This month needs attention" : "Your month looks steady";
+  const coachStateIcon = highRiskCount > 0 ? "alert-circle" : "shield-checkmark";
+  const coachStateTone: FocusTone = highRiskCount > 0 ? "warning" : "success";
+
+  const getToneColor = (tone: FocusTone) => {
+    if (tone === "danger") return palette.danger;
+    if (tone === "success") return palette.success;
+    if (tone === "warning") return palette.warning;
+    return palette.primary;
+  };
+
+  const getToneSoftColor = (tone: FocusTone) => {
+    if (tone === "danger") return palette.dangerSoft;
+    if (tone === "success") return palette.successSoft;
+    if (tone === "warning") return palette.warningSoft;
+    return palette.primarySoft;
+  };
+
+  const FocusCard = ({ item }: { item: FocusItem }) => {
+    const color = getToneColor(item.tone);
+    return (
+      <View style={styles.focusCard}>
+        <View style={[styles.focusIcon, { backgroundColor: getToneSoftColor(item.tone) }]}>
+          <Ionicons name={item.icon} size={22} color={color} />
+        </View>
+        <View style={styles.focusCopy}>
+          <View style={styles.focusTopRow}>
+            <Text style={styles.focusMeta}>{item.meta}</Text>
+            {item.actionLabel ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={item.disabled}
+                onPress={item.onPress}
+                style={[
+                  styles.focusActionButton,
+                  { backgroundColor: color },
+                  item.disabled && styles.focusActionDisabled,
+                ]}
+              >
+                <Text style={styles.focusActionText}>{item.actionLabel}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <Text style={styles.focusTitle}>{item.title}</Text>
+          <Text style={styles.focusDescription} numberOfLines={3}>
+            {item.description}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const SignalRow = ({ item }: { item: InsightItem }) => {
+    const color = getSeverityColor(item.severity);
+    return (
+      <View style={styles.signalRowCompact}>
+        <View style={[styles.signalDot, { backgroundColor: color }]} />
+        <View style={styles.signalRowCopy}>
+          <Text style={styles.signalRowTitle}>{item.title}</Text>
+          <Text style={styles.signalRowText} numberOfLines={2}>
+            {item.description}
+          </Text>
+        </View>
+        {item.differencePercent !== undefined ? (
+          <Text style={[styles.signalMetric, { color }]}>
+            {formatPercent(item.differencePercent)}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
   const SectionToggle = ({
     count,
     section,
@@ -691,102 +826,86 @@ export default function AiCoachScreen() {
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.hero}>
-          <View style={styles.heroHeader}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="sparkles" size={26} color="#FFF" />
+        <View style={styles.coachSummary}>
+          <View style={styles.coachSummaryHeader}>
+            <View
+              style={[
+                styles.coachStateIcon,
+                { backgroundColor: getToneSoftColor(coachStateTone) },
+              ]}
+            >
+              {coachLoading ? (
+                <ActivityIndicator color={getToneColor(coachStateTone)} />
+              ) : (
+                <Ionicons
+                  name={coachStateIcon}
+                  size={24}
+                  color={getToneColor(coachStateTone)}
+                />
+              )}
             </View>
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroTitle}>AI Financial Coach</Text>
-              <Text style={styles.heroSubtitle}>{currentMonth}</Text>
+            <View style={styles.coachSummaryCopy}>
+              <Text style={styles.coachStateLabel}>{currentMonth}</Text>
+              <Text style={styles.coachStateTitle}>
+                {coachResponse?.headline || coachStateTitle}
+              </Text>
+              <Text style={styles.coachStateText} numberOfLines={4}>
+                {coachResponse?.summary || primaryNotice}
+              </Text>
             </View>
           </View>
-          <View style={styles.statusGrid}>
-            <View style={styles.statusItem}>
-              <Text style={styles.statusValue}>{highRiskCount}</Text>
-              <Text style={styles.statusLabel}>Risks</Text>
+
+          {coachError ? (
+            <Text style={styles.geminiError}>
+              Gemini is unavailable right now. Showing rule-based insights below.
+            </Text>
+          ) : null}
+
+          <View style={styles.quickStatsRow}>
+            <View style={styles.quickStatItem}>
+              <Text style={styles.quickStatValue}>{highRiskCount}</Text>
+              <Text style={styles.quickStatLabel}>Risks</Text>
             </View>
-            <View style={styles.statusItem}>
-              <Text style={styles.statusValue}>{opportunityCount}</Text>
-              <Text style={styles.statusLabel}>Opportunities</Text>
+            <View style={styles.quickStatItem}>
+              <Text style={styles.quickStatValue}>{opportunityCount}</Text>
+              <Text style={styles.quickStatLabel}>Actions</Text>
             </View>
-            <View style={styles.statusItem}>
-              <Text style={styles.statusValue}>{aiInsights.categoryBehaviors.length}</Text>
-              <Text style={styles.statusLabel}>Categories</Text>
+            <View style={styles.quickStatItem}>
+              <Text style={styles.quickStatValue}>
+                {aiInsights.categoryBehaviors.length}
+              </Text>
+              <Text style={styles.quickStatLabel}>Categories</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <View style={styles.geminiCard}>
-            <View style={styles.geminiHeader}>
-              <View style={styles.geminiIcon}>
-                {coachLoading ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Ionicons name="sparkles" size={18} color="#FFF" />
-                )}
-              </View>
-              <View style={styles.geminiHeaderText}>
-                <Text style={styles.geminiHeadline}>
-                  {coachResponse?.headline || "Generating personalized guidance"}
-                </Text>
-                <Text style={styles.geminiTone}>
-                  {coachResponse
-                    ? `${coachResponse.tone} coaching`
-                    : "Powered by structured insights"}
-                </Text>
-              </View>
-            </View>
+          <Text style={styles.sectionTitle}>Focus Today</Text>
+          <View style={styles.focusList}>
+            {focusItems.map((item, index) => (
+              <FocusCard key={`${item.title}-${index}`} item={item} />
+            ))}
+          </View>
+        </View>
 
-            {coachError ? (
-              <Text style={styles.geminiError}>
-                Gemini is unavailable right now. Showing rule-based insights below.
-              </Text>
+        <View style={[styles.section, styles.sectionBelowFold]}>
+          <Text style={styles.sectionTitle}>Spending Signals</Text>
+          <View style={styles.compactSignalPanel}>
+            {compactSignals.length > 0 ? (
+              compactSignals.map((item, index) => (
+                <SignalRow key={`${item.title}-${index}`} item={item} />
+              ))
             ) : (
-              <Text style={styles.geminiSummary}>
-                {coachResponse?.summary ||
-                  "Gemini will turn your detected spending patterns into practical financial guidance."}
+              <Text style={styles.emptyText}>
+                No abnormal pattern detected yet. Keep recording transactions for a stronger
+                personal baseline.
               </Text>
             )}
-
-            <View style={styles.priorityCard}>
-              <View style={styles.priorityIcon}>
-                <Ionicons name="flash" size={18} color={palette.primary} />
-              </View>
-              <View style={styles.priorityCopy}>
-                <Text style={styles.priorityLabel}>Priority action</Text>
-                <Text style={styles.priorityText} numberOfLines={3}>
-                  {primaryAction}
-                </Text>
-              </View>
-            </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Current Signal</Text>
-          <View style={styles.signalCard}>
-            <View style={styles.signalIcon}>
-              <Ionicons
-                name={highRiskCount > 0 ? "warning" : "shield-checkmark"}
-                size={22}
-                color={highRiskCount > 0 ? palette.warning : palette.success}
-              />
-            </View>
-            <View style={styles.signalCopy}>
-              <Text style={styles.signalTitle}>
-                {highRiskCount > 0 ? "Attention needed" : "No urgent risk"}
-              </Text>
-              <Text style={styles.signalText} numberOfLines={3}>
-                {primaryNotice}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What-If Purchase Simulation</Text>
+          <Text style={styles.sectionTitle}>Ask Coach</Text>
           <View style={styles.simulatorCard}>
             <Text style={styles.simulatorLabel}>Ask about a planned purchase</Text>
             <View style={styles.simulatorInputRow}>
@@ -816,6 +935,7 @@ export default function AiCoachScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>More Details</Text>
           <SectionToggle
             count={
               (coachResponse?.notices.length || 0) +
@@ -1116,6 +1236,184 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     paddingBottom: 140,
   },
+  coachSummary: {
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+    padding: spacing.xl,
+    ...shadow.card,
+  },
+  coachSummaryHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+  },
+  coachStateIcon: {
+    alignItems: "center",
+    borderRadius: 22,
+    height: 48,
+    justifyContent: "center",
+    marginRight: 12,
+    width: 48,
+  },
+  coachSummaryCopy: {
+    flex: 1,
+  },
+  coachStateLabel: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  coachStateTitle: {
+    color: palette.text,
+    fontSize: 21,
+    fontWeight: "900",
+    lineHeight: 27,
+  },
+  coachStateText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 21,
+    marginTop: 7,
+  },
+  quickStatsRow: {
+    flexDirection: "row",
+    marginTop: 18,
+  },
+  quickStatItem: {
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: radius.md,
+    flex: 1,
+    marginRight: 8,
+    minHeight: 70,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+  },
+  quickStatValue: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  quickStatLabel: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 3,
+    textTransform: "uppercase",
+  },
+  focusList: {
+    marginTop: 2,
+  },
+  focusCard: {
+    alignItems: "flex-start",
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginBottom: 10,
+    padding: 14,
+    ...shadow.subtle,
+  },
+  focusIcon: {
+    alignItems: "center",
+    borderRadius: 18,
+    height: 40,
+    justifyContent: "center",
+    marginRight: 12,
+    width: 40,
+  },
+  focusCopy: {
+    flex: 1,
+  },
+  focusTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 5,
+  },
+  focusMeta: {
+    color: palette.textMuted,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "900",
+    marginRight: 8,
+    textTransform: "uppercase",
+  },
+  focusActionButton: {
+    alignItems: "center",
+    borderRadius: radius.pill,
+    minWidth: 66,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  focusActionDisabled: {
+    opacity: 0.65,
+  },
+  focusActionText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  focusTitle: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+  focusDescription: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+    marginTop: 5,
+  },
+  compactSignalPanel: {
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 14,
+    ...shadow.subtle,
+  },
+  signalRowCompact: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    marginBottom: 12,
+  },
+  signalDot: {
+    borderRadius: 4,
+    height: 8,
+    marginRight: 10,
+    marginTop: 6,
+    width: 8,
+  },
+  signalRowCopy: {
+    flex: 1,
+  },
+  signalRowTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19,
+  },
+  signalRowText: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  signalMetric: {
+    fontSize: 12,
+    fontWeight: "900",
+    marginLeft: 8,
+    marginTop: 2,
+  },
   hero: {
     backgroundColor: palette.surface,
     borderColor: palette.border,
@@ -1178,6 +1476,9 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.xl,
+  },
+  sectionBelowFold: {
+    marginBottom: 128,
   },
   sectionTitle: {
     color: palette.text,
