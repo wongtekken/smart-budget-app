@@ -15,6 +15,7 @@ type RecurringTransaction = {
   amount?: number | string;
   category?: string;
   frequency?: string;
+  goalId?: string | null;
   isActive?: boolean;
   nextExecuteDate?: string;
   note?: string;
@@ -124,6 +125,7 @@ export const processDueRecurringTransactions = async (userId: string) => {
             recurring: frequency,
             recurringId: recurringDoc.id,
             recurringInstanceDate: nextExecuteDate,
+            goalId: recurring.goalId || null,
             date: nextExecuteDate,
             entrySource: "recurring",
             source: "recurring",

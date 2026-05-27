@@ -53,10 +53,17 @@ const formatCompactCurrency = (value: number) => {
   return `RM ${value.toFixed(0)}`;
 };
 
+const getParentCategory = (category?: string) =>
+  category ? category.split(" - ")[0] : "Other";
+
+const isGoalCategoryName = (category?: string) =>
+  getParentCategory(category).startsWith("🎯");
+
+const normalizeType = (type?: string) => String(type || "").toLowerCase();
+
 export default function AnalysisScreen() {
-  const [activeTab, setActiveTab] = useState<"Expense" | "Income" | "Overview">(
-    "Expense",
-  );
+  const [activeTab, setActiveTab] =
+    useState<"Expense" | "Income" | "Transfer" | "Overview">("Expense");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [transactions, setTransactions] = useState<any[]>([]);
   const selectedMonth = getLocalMonthStr(currentDate);
@@ -94,10 +101,15 @@ export default function AnalysisScreen() {
     let totalAmount = 0;
 
     transactions.forEach((tx) => {
-      if (tx.type === activeTab) {
-        const parentCategory = tx.category
-          ? tx.category.split(" - ")[0]
-          : "Other";
+      const txType = normalizeType(tx.type);
+      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+      const matchesTab =
+        activeTab === "Transfer"
+          ? txType === "transfer" || isLegacyGoalExpense
+          : tx.type === activeTab && !isLegacyGoalExpense;
+
+      if (matchesTab) {
+        const parentCategory = getParentCategory(tx.category);
         const amt = Number(tx.amount) || 0;
         groupedData[parentCategory] = (groupedData[parentCategory] || 0) + amt;
         totalAmount += amt;
@@ -140,7 +152,13 @@ export default function AnalysisScreen() {
     }
     const dailyAverage = totalAmount / daysToDivide;
 
-    const currentMonthTx = transactions.filter((tx) => tx.type === activeTab);
+    const currentMonthTx = transactions.filter((tx) => {
+      const txType = normalizeType(tx.type);
+      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+      return activeTab === "Transfer"
+        ? txType === "transfer" || isLegacyGoalExpense
+        : tx.type === activeTab && !isLegacyGoalExpense;
+    });
     const topTransactions = [...currentMonthTx]
       .sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0))
       .slice(0, 3);
@@ -156,21 +174,26 @@ export default function AnalysisScreen() {
   const getOverviewData = () => {
     let totalInc = 0;
     let totalExp = 0;
+    let totalTransfer = 0;
 
     transactions.forEach((tx) => {
       const amt = Number(tx.amount) || 0;
-      if (tx.type === "Income") totalInc += amt;
-      if (tx.type === "Expense") totalExp += amt;
+      const txType = normalizeType(tx.type);
+      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+
+      if (txType === "income") totalInc += amt;
+      if (txType === "expense" && !isLegacyGoalExpense) totalExp += amt;
+      if (txType === "transfer" || isLegacyGoalExpense) totalTransfer += amt;
     });
 
     const netCashFlow = totalInc - totalExp;
     const savingsRate =
       totalInc > 0 ? ((netCashFlow / totalInc) * 100).toFixed(1) : "0.0";
 
-    return { totalInc, totalExp, netCashFlow, savingsRate };
+    return { totalInc, totalExp, totalTransfer, netCashFlow, savingsRate };
   };
 
-  const { totalInc, totalExp, netCashFlow, savingsRate } = getOverviewData();
+  const { totalInc, totalExp, totalTransfer, netCashFlow, savingsRate } = getOverviewData();
 
   const changeMonth = (offset: number) => {
     setCurrentDate((date) => {
@@ -187,7 +210,7 @@ export default function AnalysisScreen() {
   const TabButton = ({
     title,
   }: {
-    title: "Expense" | "Income" | "Overview";
+    title: "Expense" | "Income" | "Transfer" | "Overview";
   }) => (
     <TouchableOpacity
       style={[
@@ -227,6 +250,7 @@ export default function AnalysisScreen() {
         <View style={styles.segmentContainer}>
           <TabButton title="Expense" />
           <TabButton title="Income" />
+          <TabButton title="Transfer" />
           <TabButton title="Overview" />
         </View>
 
@@ -433,6 +457,28 @@ export default function AnalysisScreen() {
                     />
                   </View>
                 </View>
+
+                <View style={styles.flowBarBlock}>
+                  <View style={styles.flowBarHeader}>
+                    <Text style={styles.flowBarLabel}>Transfer to Goals</Text>
+                    <Text style={styles.flowBarAmount}>{formatCompactCurrency(totalTransfer)}</Text>
+                  </View>
+                  <View style={styles.flowBarTrack}>
+                    <View
+                      style={[
+                        styles.flowBarFill,
+                        {
+                          backgroundColor: palette.primary,
+                          width: `${Math.max(
+                            (totalTransfer / Math.max(totalInc, totalExp, totalTransfer, 1)) *
+                              100,
+                            totalTransfer > 0 ? 6 : 0,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
               </View>
 
             </View>
@@ -496,7 +542,11 @@ export default function AnalysisScreen() {
                         styles.txIconBox,
                         {
                           backgroundColor:
-                            activeTab === "Income" ? palette.success : palette.danger,
+                            activeTab === "Income"
+                              ? palette.success
+                              : activeTab === "Transfer"
+                                ? palette.primary
+                                : palette.danger,
                         },
                       ]}
                     >
@@ -504,7 +554,9 @@ export default function AnalysisScreen() {
                         name={
                           activeTab === "Expense"
                             ? "trending-down"
-                            : "trending-up"
+                            : activeTab === "Transfer"
+                              ? "swap-horizontal"
+                              : "trending-up"
                         }
                         size={18}
                         color="#FFF"
@@ -558,7 +610,7 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: palette.primary },
   tabInactive: { backgroundColor: palette.surfaceMuted },
-  tabText: { fontSize: 15, fontWeight: "bold" },
+  tabText: { fontSize: 13, fontWeight: "bold" },
   tabTextActive: { color: "#FFF" },
   tabTextInactive: { color: palette.textMuted },
   monthNavigator: {

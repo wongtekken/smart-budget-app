@@ -39,6 +39,18 @@ const sortTransactionsByDate = (a: any, b: any) => {
   return getCreatedTime(b) - getCreatedTime(a);
 };
 
+const getAmountPrefix = (type?: string) => {
+  if (type === "Expense") return "- ";
+  if (type === "Income") return "+ ";
+  return "";
+};
+
+const getAmountColor = (type?: string) => {
+  if (type === "Expense") return "#E53935";
+  if (type === "Income") return "#4CAF50";
+  return palette.primary;
+};
+
 const getLocalMonthStr = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 7);
@@ -303,12 +315,10 @@ export default function TransactionsScreen() {
                       <Text
                         style={[
                           styles.itemAmount,
-                          item.type === "Expense"
-                            ? styles.expenseText
-                            : styles.incomeText,
+                          { color: getAmountColor(item.type) },
                         ]}
                       >
-                        {item.type === "Expense" ? "- " : "+ "}RM{" "}
+                        {getAmountPrefix(item.type)}RM{" "}
                         {Number(item.amount).toFixed(2)}
                       </Text>
                     </TouchableOpacity>
@@ -346,13 +356,11 @@ export default function TransactionsScreen() {
                       styles.modalAmount,
                       {
                         color:
-                          selectedTx?.type === "Expense"
-                            ? "#E53935"
-                            : "#4CAF50",
+                          getAmountColor(selectedTx?.type),
                       },
                     ]}
                   >
-                    {selectedTx?.type === "Expense" ? "- " : "+ "}RM{" "}
+                    {getAmountPrefix(selectedTx?.type)}RM{" "}
                     {selectedTx?.amount
                       ? Number(selectedTx.amount).toFixed(2)
                       : "0.00"}
@@ -442,6 +450,7 @@ export default function TransactionsScreen() {
                         ? selectedTx.amount.toString()
                         : "",
                       returnedCategory: selectedTx.category || "",
+                      returnedGoalId: selectedTx.goalId || "",
                       returnedNote: selectedTx.note || "",
                       returnedDate: selectedTx.date || "",
                       returnedRecurring: selectedTx.recurring || "Never",

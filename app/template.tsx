@@ -105,7 +105,8 @@ export default function TemplateScreen() {
       const cats: any[] = [];
       snapshot.forEach((doc) => {
         const cat = doc.data();
-        if (!cat.parentId) cats.push({ id: doc.id, ...cat });
+        const isGoalCategory = cat.isGoal || String(cat.name || "").startsWith("🎯");
+        if (!cat.parentId && !isGoalCategory) cats.push({ id: doc.id, ...cat });
       });
       setRealCategories(cats);
     });

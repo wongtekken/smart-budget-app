@@ -40,8 +40,10 @@ import { useAppDialog } from "../../components/app-dialog";
 
 type ExpenseCategoryRecord = {
   id: string;
+  isGoal?: boolean;
   name?: string;
   parentId?: string | null;
+  type?: string;
 };
 
 type FocusTone = "danger" | "success" | "warning" | "primary";
@@ -219,7 +221,13 @@ export default function AiCoachScreen() {
   const activeExpenseCategories = useMemo(
     () =>
       expenseCategories
-        .filter((category) => !category.parentId && category.name)
+        .filter(
+          (category) =>
+            !category.parentId &&
+            category.name &&
+            !category.isGoal &&
+            !category.name.startsWith("🎯"),
+        )
         .map((category) => category.name as string),
     [expenseCategories],
   );
@@ -521,9 +529,9 @@ export default function AiCoachScreen() {
 
     const amount = Number(opportunity.unusedAmount.toFixed(2));
     const confirmed = await showConfirm({
-      title: "Move to Goal",
-      message: `Move RM ${amount.toFixed(2)} from ${opportunity.category} to next month's ${goalCategoryName} budget?`,
-      confirmLabel: "Move",
+      title: "Plan Goal Budget",
+      message: `Assign RM ${amount.toFixed(2)} from ${opportunity.category} to next month's ${goalCategoryName} planned budget?`,
+      confirmLabel: "Assign",
       type: "confirm",
     });
 
@@ -532,7 +540,7 @@ export default function AiCoachScreen() {
     await addToNextMonthBudget(
       goalCategoryName,
       amount,
-      `RM ${amount.toFixed(2)} has been moved to next month's ${goalCategoryName} budget.`,
+      `RM ${amount.toFixed(2)} has been assigned to next month's ${goalCategoryName} planned budget.`,
     );
   };
 
@@ -571,12 +579,12 @@ export default function AiCoachScreen() {
     if (mode === "goal" && !goalCategoryName) return;
 
     const confirmed = await showConfirm({
-      title: mode === "goal" ? "Move Saving to Goal" : "Reduce Category Budget",
+      title: mode === "goal" ? "Plan Goal Budget" : "Reduce Category Budget",
       message:
         mode === "goal"
-          ? `Reduce ${category} by RM ${amount.toFixed(2)} and move it to ${goalCategoryName}?`
+          ? `Reduce ${category} by RM ${amount.toFixed(2)} and assign it to ${goalCategoryName} planned budget?`
           : `Reduce ${category} budget by RM ${amount.toFixed(2)}?`,
-      confirmLabel: mode === "goal" ? "Move" : "Reduce",
+      confirmLabel: mode === "goal" ? "Assign" : "Reduce",
       type: "confirm",
     });
 
@@ -606,10 +614,10 @@ export default function AiCoachScreen() {
       );
 
       showDialog({
-        title: mode === "goal" ? "Saving Moved" : "Budget Reduced",
+        title: mode === "goal" ? "Goal Budget Planned" : "Budget Reduced",
         message:
           mode === "goal"
-            ? `RM ${amount.toFixed(2)} was moved from ${category} to ${goalCategoryName}.`
+            ? `RM ${amount.toFixed(2)} was assigned from ${category} to ${goalCategoryName} planned budget.`
             : `RM ${amount.toFixed(2)} was released from ${category}.`,
         type: "success",
       });
@@ -1133,7 +1141,7 @@ export default function AiCoachScreen() {
                         ]}
                       >
                         <Ionicons name="flag-outline" size={18} color={palette.success} />
-                        <Text style={styles.savingSecondaryButtonText}>Move to Goal</Text>
+                        <Text style={styles.savingSecondaryButtonText}>Plan Goal</Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>

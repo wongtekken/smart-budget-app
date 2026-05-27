@@ -3,6 +3,7 @@ export type TransactionRecord = {
   amount?: number | string;
   category?: string;
   date?: string;
+  goalId?: string | null;
   note?: string;
   recurring?: string;
   type?: string;
@@ -101,6 +102,8 @@ const normalizeType = (type?: string) => String(type || "").toLowerCase();
 const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Uncategorized";
 
+const isGoalCategoryName = (category?: string) => getParentCategory(category).startsWith("🎯");
+
 const getAmount = (value?: number | string) => Number(value) || 0;
 
 const getActiveCategorySet = (activeExpenseCategories?: string[]) => {
@@ -173,7 +176,9 @@ const standardDeviation = (values: number[]) => {
 };
 
 const getExpenseTransactions = (transactions: TransactionRecord[]) =>
-  transactions.filter((tx) => normalizeType(tx.type) === "expense");
+  transactions.filter(
+    (tx) => normalizeType(tx.type) === "expense" && !isGoalCategoryName(tx.category),
+  );
 
 const getSpendByCategoryForMonth = (transactions: TransactionRecord[], month: string) => {
   const byCategory: Record<string, number> = {};
@@ -190,6 +195,9 @@ const getSpendByCategoryForMonth = (transactions: TransactionRecord[], month: st
 const getTotalForMonth = (transactions: TransactionRecord[], month: string, type: string) =>
   transactions.reduce((sum, tx) => {
     if (!String(tx.date || "").startsWith(month) || normalizeType(tx.type) !== type) {
+      return sum;
+    }
+    if (type === "expense" && isGoalCategoryName(tx.category)) {
       return sum;
     }
 
@@ -699,6 +707,7 @@ export const createReactiveBudgetAlert = (
   currentAllocations: Record<string, number>,
 ) => {
   if (normalizeType(transaction.type) !== "expense") return null;
+  if (isGoalCategoryName(transaction.category)) return null;
 
   const category = getParentCategory(transaction.category);
   const txMonth = String(transaction.date || getLocalDateStr()).slice(0, 7);

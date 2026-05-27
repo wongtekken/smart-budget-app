@@ -61,7 +61,9 @@ type InputFieldProps = {
 };
 
 type CategoryType = {
+  goalId?: string;
   id: string;
+  isGoal?: boolean;
   name: string;
   parentId: string | null;
   type: string;
@@ -108,6 +110,7 @@ export default function AddTransactionScreen() {
     returnedNote,
     returnedDate,
     returnedRecurring,
+    returnedGoalId,
     editId: paramEditId,
     recurringId: paramRecurringId,
   } = useLocalSearchParams();
@@ -117,6 +120,7 @@ export default function AddTransactionScreen() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editRecurringId, setEditRecurringId] = useState<string | null>(null);
   const [category, setCategory] = useState("");
+  const [selectedGoalId, setSelectedGoalId] = useState("");
   const [note, setNote] = useState("");
   const [selectedSegment, setSelectedSegment] = useState("Expense");
   const [userCategoryNames, setUserCategoryNames] = useState<string[]>([]);
@@ -266,7 +270,11 @@ export default function AddTransactionScreen() {
         id: categoryDoc.id,
         ...categoryDoc.data(),
       })) as CategoryType[];
-      const expenseCategories = categories.filter((c) => c.type === "Expense");
+      const isGoalCategory = (item: CategoryType) =>
+        Boolean(item.isGoal) || item.name.startsWith("🎯");
+      const expenseCategories = categories.filter(
+        (c) => c.type === "Expense" && !isGoalCategory(c),
+      );
       const expenseParents = expenseCategories.filter((c) => !c.parentId);
       const categoryNames = expenseParents.flatMap((parent) => {
         const subcategories = expenseCategories.filter(
@@ -294,6 +302,9 @@ export default function AddTransactionScreen() {
     if (returnedRecurring) setRecurring(returnedRecurring as string);
     if (paramEditId) setEditId(paramEditId as string);
     if (paramRecurringId) setEditRecurringId(paramRecurringId as string);
+    if (returnedGoalId && typeof returnedGoalId === "string") {
+      setSelectedGoalId(returnedGoalId);
+    }
 
     if (
       returnedDate &&
@@ -312,6 +323,7 @@ export default function AddTransactionScreen() {
     returnedNote,
     returnedDate,
     returnedRecurring,
+    returnedGoalId,
     paramEditId,
     paramRecurringId,
   ]);
@@ -659,6 +671,8 @@ export default function AddTransactionScreen() {
     try {
       const numericAmount = parseFloat(amount);
       const now = new Date();
+      const isTransfer = selectedSegment === "Transfer";
+      const goalFields = isTransfer ? { goalId: selectedGoalId || null } : { goalId: null };
       const sourceFields =
         entrySource === "manual"
           ? {}
@@ -688,6 +702,7 @@ export default function AddTransactionScreen() {
           recurring: recurring,
           recurringId: recurring !== "Never" ? recurringRef?.id || null : null,
           updatedAt: now,
+          ...goalFields,
           ...sourceFields,
         });
 
@@ -706,6 +721,7 @@ export default function AddTransactionScreen() {
               nextExecuteDate: formatDate(nextRecurringDate),
               isActive: true,
               updatedAt: now,
+              ...goalFields,
             },
             { merge: true },
           );
@@ -724,8 +740,12 @@ export default function AddTransactionScreen() {
           note,
           recurring,
           type: selectedSegment,
+          ...goalFields,
         };
-        const budgetAlert = await getPostSaveBudgetAlert(savedTransaction, user.uid);
+        const budgetAlert =
+          selectedSegment === "Expense"
+            ? await getPostSaveBudgetAlert(savedTransaction, user.uid)
+            : null;
         if (budgetAlert) {
           saveMessage = `${saveMessage}\n\nAI Coach: ${budgetAlert.description}`;
         }
@@ -747,6 +767,7 @@ export default function AddTransactionScreen() {
           recurringId: recurringRef?.id || null,
           createdAt: now,
           entrySource,
+          ...goalFields,
           source: entrySource,
         });
 
@@ -763,6 +784,7 @@ export default function AddTransactionScreen() {
             nextExecuteDate: formatDate(nextRecurringDate),
             isActive: true,
             createdAt: now,
+            ...goalFields,
           });
         }
 
@@ -774,8 +796,12 @@ export default function AddTransactionScreen() {
           note,
           recurring,
           type: selectedSegment,
+          ...goalFields,
         };
-        const budgetAlert = await getPostSaveBudgetAlert(savedTransaction, user.uid);
+        const budgetAlert =
+          selectedSegment === "Expense"
+            ? await getPostSaveBudgetAlert(savedTransaction, user.uid)
+            : null;
         if (budgetAlert) {
           saveMessage = `${saveMessage}\n\nAI Coach: ${budgetAlert.description}`;
         }
@@ -785,6 +811,7 @@ export default function AddTransactionScreen() {
 
       setAmount("");
       setCategory("");
+      setSelectedGoalId("");
       setNote("");
       setDate(new Date());
       setNextRecurringDate(new Date());
@@ -800,6 +827,7 @@ export default function AddTransactionScreen() {
         returnedNote: "",
         returnedDate: "",
         returnedRecurring: "",
+        returnedGoalId: "",
         editId: "",
         recurringId: "",
       });
@@ -830,6 +858,12 @@ export default function AddTransactionScreen() {
     ],
   };
   const isVoiceAnalyzing = aiMode === "voice" && !recorderState.isRecording;
+  const segmentColor =
+    selectedSegment === "Expense"
+      ? palette.danger
+      : selectedSegment === "Income"
+        ? palette.success
+        : palette.primary;
 
   return (
     <View style={styles.container}>
@@ -855,9 +889,11 @@ export default function AddTransactionScreen() {
             onPress={() => {
               setSelectedSegment("Expense");
               setCategory("");
+              setSelectedGoalId("");
               router.setParams({
                 returnedType: "Expense",
                 returnedCategory: "",
+                returnedGoalId: "",
               });
             }}
           >
@@ -879,9 +915,11 @@ export default function AddTransactionScreen() {
             onPress={() => {
               setSelectedSegment("Income");
               setCategory("");
+              setSelectedGoalId("");
               router.setParams({
                 returnedType: "Income",
                 returnedCategory: "",
+                returnedGoalId: "",
               });
             }}
           >
@@ -892,6 +930,32 @@ export default function AddTransactionScreen() {
               ]}
             >
               Income
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.segment,
+              selectedSegment === "Transfer" && styles.segmentSelected,
+            ]}
+            onPress={() => {
+              setSelectedSegment("Transfer");
+              setCategory("");
+              setSelectedGoalId("");
+              router.setParams({
+                returnedType: "Transfer",
+                returnedCategory: "",
+                returnedGoalId: "",
+              });
+            }}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                selectedSegment === "Transfer" && styles.segmentTextSelected,
+              ]}
+            >
+              Transfer
             </Text>
           </TouchableOpacity>
         </View>
@@ -912,7 +976,7 @@ export default function AddTransactionScreen() {
                 style={{
                   fontSize: 20,
                   fontWeight: "bold",
-                  color: selectedSegment === "Expense" ? palette.danger : palette.success,
+                  color: segmentColor,
                   marginRight: 5,
                 }}
               >
@@ -923,7 +987,7 @@ export default function AddTransactionScreen() {
                   styles.amountInput,
                   {
                     color:
-                      selectedSegment === "Expense" ? palette.danger : palette.success,
+                      segmentColor,
                     minWidth: 60,
                   },
                 ]}

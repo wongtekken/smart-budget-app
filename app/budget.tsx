@@ -35,6 +35,14 @@ const getLocalMonthStr = () => {
 const isSavingsCategoryName = (name?: string) =>
   String(name || "").toLowerCase().includes("saving");
 
+const isGoalCategoryName = (name?: string) => String(name || "").startsWith("🎯");
+
+const isGoalCategory = (category: any) =>
+  Boolean(category?.isGoal) ||
+  category?.type === "Transfer" ||
+  isGoalCategoryName(category?.name) ||
+  isSavingsCategoryName(category?.name);
+
 type TemplateAllocation = {
   category?: string;
   mode?: "Fixed" | "Percentage";
@@ -77,7 +85,6 @@ export default function BudgetScreen() {
     const q = query(
       collection(db, "categories"),
       where("userId", "==", user.uid),
-      where("type", "==", "Expense"),
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const cats: any[] = [];
@@ -109,16 +116,17 @@ export default function BudgetScreen() {
         const tx = doc.data();
         const amount = Number(tx.amount) || 0;
         const txDate = tx.date || "1970-01-01";
+        const parentCatName = tx.category
+          ? tx.category.split(" - ")[0]
+          : "Uncategorized";
+        const isLegacyGoalExpense = tx.type === "Expense" && isGoalCategoryName(parentCatName);
 
         if (txDate < startOfThisMonth) {
           if (tx.type === "Income") histIncome += amount;
-          if (tx.type === "Expense") histExpense += amount;
+          if (tx.type === "Expense" && !isLegacyGoalExpense) histExpense += amount;
         } else if (txDate >= startOfThisMonth && txDate <= endOfThisMonth) {
           if (tx.type === "Income") currIncome += amount;
-          else if (tx.type === "Expense") {
-            const parentCatName = tx.category
-              ? tx.category.split(" - ")[0]
-              : "Uncategorized";
+          else if (tx.type === "Expense" && !isLegacyGoalExpense) {
             if (!expensesCalc[parentCatName]) expensesCalc[parentCatName] = 0;
             expensesCalc[parentCatName] += amount;
           }
@@ -156,12 +164,23 @@ export default function BudgetScreen() {
   // ==========================================
   const totalAvailable = totalIncome;
   const parentCategories = useMemo(
-    () => expenseCategories.filter((c) => !c.parentId),
+    () =>
+      expenseCategories.filter(
+        (c) => !c.parentId && c.type === "Expense" && !isGoalCategory(c),
+      ),
+    [expenseCategories],
+  );
+  const goalCategories = useMemo(
+    () => expenseCategories.filter((c) => !c.parentId && isGoalCategory(c)),
     [expenseCategories],
   );
   const activeCategoryNames = useMemo(
     () => new Set(parentCategories.map((cat) => cat.name)),
     [parentCategories],
+  );
+  const goalCategoryNames = useMemo(
+    () => new Set(goalCategories.map((cat) => cat.name)),
+    [goalCategories],
   );
   const activeAllocations = categoriesLoaded
     ? Object.fromEntries(
@@ -170,11 +189,18 @@ export default function BudgetScreen() {
         ),
       )
     : allocations;
+  const goalAllocations = categoriesLoaded
+    ? Object.fromEntries(
+        Object.entries(allocations).filter(([category]) =>
+          goalCategoryNames.has(category),
+        ),
+      )
+    : {};
 
   const totalAllocated = Object.values(activeAllocations).reduce(
     (sum, val) => sum + val,
     0,
-  );
+  ) + Object.values(goalAllocations).reduce((sum, val) => sum + val, 0);
   const awaitingAssign = totalAvailable - totalAllocated;
 
   // 🚨 智能分类过滤：提取活跃分类与闲置分类
@@ -187,7 +213,10 @@ export default function BudgetScreen() {
     : expensesByCategory;
   const inactiveCategorySpend = categoriesLoaded
     ? Object.entries(expensesByCategory)
-        .filter(([category]) => !activeCategoryNames.has(category))
+        .filter(
+          ([category]) =>
+            !activeCategoryNames.has(category) && !goalCategoryNames.has(category),
+        )
         .reduce((sum, [, amount]) => sum + amount, 0)
     : 0;
 
@@ -199,6 +228,13 @@ export default function BudgetScreen() {
 
   const addableCategories = parentCategories.filter(
     (cat) => (activeAllocations[cat.name] || 0) <= 0,
+  );
+  const addableGoalCategories = goalCategories.filter(
+    (cat) => (goalAllocations[cat.name] || 0) <= 0,
+  );
+  const addableBudgetCategories = [...addableCategories, ...addableGoalCategories];
+  const plannedGoalCategories = goalCategories.filter(
+    (cat) => (goalAllocations[cat.name] || 0) > 0,
   );
 
   // ==========================================
@@ -483,7 +519,7 @@ export default function BudgetScreen() {
           >
             <Text style={styles.breakdownTitle}>Detailed Breakdown</Text>
             {/* 🚨 零基预算：如果还有闲置分类没加，就显示 + 号 */}
-            {addableCategories.length > 0 && (
+            {addableBudgetCategories.length > 0 && (
               <TouchableOpacity
                 onPress={() => setAddModalVisible(true)}
                 style={{ padding: 5 }}
@@ -618,7 +654,50 @@ export default function BudgetScreen() {
             );
           })}
 
-          {activeCategories.length === 0 && (
+          {plannedGoalCategories.length > 0 && (
+            <View style={styles.plannedGoalSection}>
+              <Text style={styles.plannedGoalTitle}>Planned Goal Savings</Text>
+              {plannedGoalCategories.map((cat) => {
+                const allocated = goalAllocations[cat.name] || 0;
+
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={styles.budgetItem}
+                    onPress={() => openEditModal(cat.name, allocated)}
+                  >
+                    <View style={styles.itemTextRow}>
+                      <Text style={styles.categoryName}>{cat.name}</Text>
+                      <View style={styles.amountStatusGroup}>
+                        <Text style={[styles.amountText, { color: palette.primary }]}>
+                          Planned: RM {allocated.toFixed(0)}
+                        </Text>
+                        <View style={styles.atRiskBadge}>
+                          <Ionicons name="flag" size={14} color={palette.primary} />
+                          <Text style={[styles.atRiskText, { color: palette.primary }]}>
+                            Goal
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.progressBarBg}>
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            backgroundColor: palette.primary,
+                            width: allocated > 0 ? "100%" : "0%",
+                          },
+                        ]}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {activeCategories.length === 0 && plannedGoalCategories.length === 0 && (
             <View
               style={{ alignItems: "center", marginTop: 20, paddingBottom: 20 }}
             >
@@ -729,7 +808,7 @@ export default function BudgetScreen() {
                   flexWrap: "wrap",
                 }}
               >
-                {addableCategories.map((cat) => (
+                {addableBudgetCategories.map((cat) => (
                   <TouchableOpacity
                     key={cat.id}
                     style={[
@@ -899,6 +978,18 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   budgetItem: { marginBottom: 25 },
+  plannedGoalSection: {
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    marginTop: 4,
+    paddingTop: 18,
+  },
+  plannedGoalTitle: {
+    color: palette.primary,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 14,
+  },
   itemTextRow: {
     flexDirection: "row",
     justifyContent: "space-between",

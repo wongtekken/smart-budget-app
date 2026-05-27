@@ -41,7 +41,19 @@ type GoalType = {
   createdAt: string;
 };
 
+type GoalTransaction = {
+  amount?: number | string;
+  category?: string;
+  goalId?: string | null;
+  type?: string;
+};
+
 const normalizeName = (value: string) => value.trim().toLowerCase();
+
+const getGoalCategoryName = (title: string) => `🎯 ${title}`;
+
+const getParentCategory = (category?: string) =>
+  category ? category.split(" - ")[0] : "";
 
 const calculateDaysLeft = (deadlineStr?: string) => {
   if (!deadlineStr) return 0;
@@ -64,7 +76,7 @@ export default function GoalScreen() {
 
   const [goals, setGoals] = useState<GoalType[]>([]);
   // 🚨 新增：用来存储用户历史上所有的预算分配，用来算进度！
-  const [allBudgets, setAllBudgets] = useState<Record<string, any>[]>([]);
+  const [goalTransactions, setGoalTransactions] = useState<GoalTransaction[]>([]);
 
   const [isModalVisible, setModalVisible] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
@@ -104,31 +116,33 @@ export default function GoalScreen() {
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
-    const q = query(
-      collection(db, "monthly_budgets"),
-      where("userId", "==", user.uid),
-    );
+    const q = query(collection(db, "transactions"), where("userId", "==", user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const budgets: any[] = [];
-      snapshot.forEach((doc) => budgets.push(doc.data()));
-      setAllBudgets(budgets);
+      const transactions: GoalTransaction[] = [];
+      snapshot.forEach((doc) => transactions.push(doc.data() as GoalTransaction));
+      setGoalTransactions(transactions);
     });
     return () => unsubscribe();
   }, []);
 
-  // 辅助函数：根据预算计算当前目标的真实存款
+  // 辅助函数：根据 Transfer 交易计算当前目标的真实存款
   const getCalculatedCurrentAmount = (goal: GoalType) => {
-    const categoryName = `🎯 ${goal.title}`;
-    let allocatedSum = 0;
+    const categoryName = getGoalCategoryName(goal.title);
+    const contributionSum = goalTransactions.reduce((sum, tx) => {
+      const txType = String(tx.type || "").toLowerCase();
+      const parentCategory = getParentCategory(tx.category);
+      const isTransferContribution =
+        txType === "transfer" &&
+        ((goal.id && tx.goalId === goal.id) || parentCategory === categoryName);
+      const isLegacyGoalExpense =
+        txType === "expense" && parentCategory === categoryName;
 
-    // 遍历所有月份的预算，把分给这个目标的钱加起来
-    allBudgets.forEach((budget) => {
-      if (budget.allocations && budget.allocations[categoryName]) {
-        allocatedSum += budget.allocations[categoryName];
-      }
-    });
+      return isTransferContribution || isLegacyGoalExpense
+        ? sum + (Number(tx.amount) || 0)
+        : sum;
+    }, 0);
 
-    return (goal.initialAmount || 0) + allocatedSum;
+    return (goal.initialAmount || 0) + contributionSum;
   };
 
   const openCreateModal = () => {
@@ -206,12 +220,11 @@ export default function GoalScreen() {
         delete baseData.title;
         await updateDoc(doc(db, "goals", editingGoalId), baseData);
       } else {
-        const goalCategoryName = `🎯 ${trimmedTitle}`;
+        const goalCategoryName = getGoalCategoryName(trimmedTitle);
         const duplicateCategorySnapshot = await getDocs(
           query(
             collection(db, "categories"),
             where("userId", "==", user.uid),
-            where("type", "==", "Expense"),
           ),
         );
         const hasDuplicateCategory = duplicateCategorySnapshot.docs.some(
@@ -244,7 +257,7 @@ export default function GoalScreen() {
         // ✨ 魔法联动：自动在 categories 集合里生成一个储蓄分类
         await addDoc(collection(db, "categories"), {
           userId: user.uid,
-          type: "Expense", // 把存钱看作一种特殊的预算支出
+          type: "Transfer",
           name: goalCategoryName,
           icon: "flag-outline",
           parentId: null,

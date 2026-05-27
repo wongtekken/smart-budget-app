@@ -36,6 +36,8 @@ type CategoryType = {
   icon: string;
   parentId: string | null;
   isDefault: boolean;
+  isGoal?: boolean;
+  goalId?: string;
 };
 
 export default function CategoryScreen() {
@@ -43,7 +45,12 @@ export default function CategoryScreen() {
 
   // 接收 Add 页面传过来的“行李”
   const params = useLocalSearchParams();
-  const currentType = params.type === "Income" ? "Income" : "Expense";
+  const currentType =
+    params.type === "Income"
+      ? "Income"
+      : params.type === "Transfer"
+        ? "Transfer"
+        : "Expense";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -73,7 +80,15 @@ export default function CategoryScreen() {
   }, []);
 
   // 整理数据结构
-  const currentTabData = categories.filter((c) => c.type === currentType);
+  const isGoalCategory = (category: CategoryType) =>
+    Boolean(category.isGoal) || category.name.startsWith("🎯");
+  const currentTabData = categories.filter((category) => {
+    if (currentType === "Transfer") return isGoalCategory(category);
+    if (currentType === "Expense") {
+      return category.type === "Expense" && !isGoalCategory(category);
+    }
+    return category.type === "Income";
+  });
   const allParents = currentTabData.filter((c) => !c.parentId);
 
   const getSubcategories = (parentId: string) => {
@@ -98,12 +113,13 @@ export default function CategoryScreen() {
   };
 
   // 🚨 4. 核心选定逻辑：带着选中的名字和行李滚回 Add 页面
-  const handleSelectCategory = (categoryName: string) => {
+  const handleSelectCategory = (categoryName: string, goalId = "") => {
     router.navigate({
       pathname: "/(tabs)/add",
       params: {
         returnedCategory: categoryName,
         returnedType: currentType,
+        returnedGoalId: goalId,
         returnedAmount: params.savedAmount,
         returnedNote: params.savedNote,
         returnedDate: params.savedDate,
@@ -147,9 +163,10 @@ export default function CategoryScreen() {
                 searchQuery.length > 0 &&
                 subs.some((sub) =>
                   sub.name.toLowerCase().includes(searchQuery.toLowerCase()),
-                );
+              );
               const isExpanded = expandedId === parent.id || hasMatchingSub;
               const isIncome = currentType === "Income";
+              const isTransfer = currentType === "Transfer";
 
               return (
                 <View
@@ -166,7 +183,7 @@ export default function CategoryScreen() {
                     onPress={() => {
                       // 🚨 智能逻辑：如果没有小类，直接选中它！如果有小类，才展开！
                       if (subs.length === 0) {
-                        handleSelectCategory(parent.name);
+                        handleSelectCategory(parent.name, parent.goalId || "");
                       } else {
                         toggleExpand(parent.id);
                       }
@@ -176,7 +193,13 @@ export default function CategoryScreen() {
                       <View
                         style={[
                           styles.iconBox,
-                          { backgroundColor: isIncome ? "#E8F5E9" : "#FFF3E0" },
+                          {
+                            backgroundColor: isIncome
+                              ? "#E8F5E9"
+                              : isTransfer
+                                ? palette.primarySoft
+                                : "#FFF3E0",
+                          },
                         ]}
                       >
                         <Ionicons
@@ -228,6 +251,7 @@ export default function CategoryScreen() {
                             onPress={() =>
                               handleSelectCategory(
                                 `${parent.name} - ${sub.name}`,
+                                sub.goalId || parent.goalId || "",
                               )
                             } // 组合名字！
                           >
