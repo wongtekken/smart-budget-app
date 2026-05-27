@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -38,6 +39,29 @@ type ExpenseCategory = {
   name?: string;
   parentId?: string | null;
   type?: string;
+};
+
+const HERO_GRADIENT_COLORS = ["#FFF1C7", "#FFE0A3", "#FFD2B3"] as const;
+
+const getBudgetGradient = (budgetUsed: number) => {
+  if (budgetUsed >= 1) {
+    return {
+      colors: ["#FF8A80", "#E53935"] as const,
+      progressColor: "rgba(255,255,255,0.95)",
+    };
+  }
+
+  if (budgetUsed >= 0.8) {
+    return {
+      colors: ["#FBCB77", "#F59E0B"] as const,
+      progressColor: "rgba(255,255,255,0.95)",
+    };
+  }
+
+  return {
+    colors: ["#62C987", "#34A853"] as const,
+    progressColor: "rgba(255,255,255,0.95)",
+  };
 };
 
 const getLocalMonthStr = () => {
@@ -327,6 +351,7 @@ export default function DashboardScreen() {
         : dashboard.budgetUsed >= 0.8
           ? "At risk"
           : "On track";
+  const budgetGradient = getBudgetGradient(dashboard.budgetUsed);
 
   return (
     <View style={styles.container}>
@@ -354,7 +379,12 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.heroCard}>
+            <LinearGradient
+              colors={HERO_GRADIENT_COLORS}
+              end={{ x: 1, y: 1 }}
+              start={{ x: 0, y: 0 }}
+              style={styles.heroCard}
+            >
               <View style={styles.heroHeader}>
                 <View>
                   <Text style={styles.cardLabel}>Financial Health Score</Text>
@@ -388,36 +418,42 @@ export default function DashboardScreen() {
 
               </View>
 
-            </View>
+            </LinearGradient>
 
-            <TouchableOpacity style={styles.budgetCard} onPress={() => router.push("/budget")}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={[styles.sectionTitle, styles.budgetTitle]}>Monthly Budget</Text>
-                  <Text style={[styles.sectionSubtitle, styles.budgetSubtitle]}>{budgetStatus}</Text>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => router.push("/budget")}
+              style={styles.budgetCardShell}
+            >
+              <LinearGradient
+                colors={budgetGradient.colors}
+                end={{ x: 1, y: 1 }}
+                start={{ x: 0, y: 0 }}
+                style={styles.budgetCard}
+              >
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text style={[styles.sectionTitle, styles.budgetTitle]}>Monthly Budget</Text>
+                    <Text style={[styles.sectionSubtitle, styles.budgetSubtitle]}>{budgetStatus}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
                 </View>
-                <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
-              </View>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(dashboard.budgetUsed * 100, 100)}%`,
-                      backgroundColor:
-                        dashboard.budgetUsed >= 1
-                          ? palette.danger
-                          : dashboard.budgetUsed >= 0.8
-                            ? palette.warning
-                            : palette.primary,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.budgetMeta}>
-                <Text style={styles.metaText}>Spent {formatCurrency(dashboard.expenses)}</Text>
-                <Text style={styles.metaText}>Budget {formatCurrency(dashboard.allocated)}</Text>
-              </View>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.min(dashboard.budgetUsed * 100, 100)}%`,
+                        backgroundColor: budgetGradient.progressColor,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.budgetMeta}>
+                  <Text style={styles.metaText}>Spent {formatCurrency(dashboard.expenses)}</Text>
+                  <Text style={styles.metaText}>Budget {formatCurrency(dashboard.allocated)}</Text>
+                </View>
+              </LinearGradient>
             </TouchableOpacity>
 
             <View style={styles.sectionBlock}>
@@ -649,8 +685,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   heroCard: {
-    backgroundColor: "#FFD166",
+    borderColor: "rgba(255,255,255,0.72)",
     borderRadius: radius.xl,
+    borderWidth: 1,
     marginBottom: spacing.lg,
     padding: spacing.xl,
     ...shadow.card,
@@ -674,8 +711,8 @@ const styles = StyleSheet.create({
   },
   gradeBadge: {
     alignItems: "center",
-    backgroundColor: palette.primarySoft,
-    borderColor: "rgba(255,130,22,0.18)",
+    backgroundColor: "rgba(255,255,255,0.58)",
+    borderColor: "rgba(255,255,255,0.72)",
     borderWidth: 1,
     borderRadius: radius.pill,
     flexDirection: "row",
@@ -724,22 +761,26 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   scoreTrack: {
-    backgroundColor: "rgba(255,255,255,0.62)",
+    backgroundColor: "rgba(255,255,255,0.64)",
     borderRadius: radius.pill,
     height: 12,
     overflow: "hidden",
   },
   scoreFill: {
-    backgroundColor: palette.primary,
+    backgroundColor: "#FF8216",
     borderRadius: radius.pill,
     height: "100%",
   },
-  budgetCard: {
-    backgroundColor: "#5AC37B",
+  budgetCardShell: {
     borderRadius: radius.lg,
     marginBottom: spacing.xxl,
+    ...shadow.card,
+  },
+  budgetCard: {
+    borderColor: "rgba(255,255,255,0.36)",
+    borderRadius: radius.lg,
+    borderWidth: 1,
     padding: spacing.lg,
-    ...shadow.subtle,
   },
   budgetTitle: {
     color: "#FFFFFF",
@@ -794,15 +835,19 @@ const styles = StyleSheet.create({
   },
   listCard: {
     backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderWidth: 1,
     borderRadius: radius.lg,
     overflow: "hidden",
-    ...shadow.subtle,
+    ...shadow.card,
   },
   breakdownCard: {
     backgroundColor: palette.surface,
+    borderColor: palette.border,
     borderRadius: radius.lg,
+    borderWidth: 1,
     padding: spacing.xl,
-    ...shadow.subtle,
+    ...shadow.card,
   },
   inactiveNotice: {
     alignItems: "flex-start",
