@@ -149,6 +149,7 @@ export default function AiCoachScreen() {
   const [coachResponse, setCoachResponse] = useState<FinancialCoachResponse | null>(null);
   const [coachError, setCoachError] = useState("");
   const [coachLoading, setCoachLoading] = useState(false);
+  const [lastCoachRefreshAt, setLastCoachRefreshAt] = useState("");
   const [transferInProgress, setTransferInProgress] = useState(false);
   const [rolloverInProgress, setRolloverInProgress] = useState(false);
   const [savingActionInProgress, setSavingActionInProgress] = useState(false);
@@ -299,36 +300,47 @@ export default function AiCoachScreen() {
     if (transactions.length === 0) {
       setCoachResponse(null);
       setCoachError("");
+      setLastCoachRefreshAt("");
+    }
+  }, [transactions.length]);
+
+  const handleRefreshCoach = async () => {
+    if (coachLoading) return;
+
+    if (transactions.length === 0) {
+      setCoachResponse(null);
+      setCoachError("");
+      setLastCoachRefreshAt("");
+      showDialog({
+        message: "Add transactions first so Gemini has spending patterns to explain.",
+        title: "No Data Yet",
+        type: "info",
+      });
       return;
     }
 
-    let isActive = true;
-    const timeoutId = setTimeout(() => {
-      setCoachLoading(true);
-      setCoachError("");
+    setCoachLoading(true);
+    setCoachError("");
 
-      generateFinancialCoach(currentMonth, coachPayload)
-        .then((response) => {
-          if (isActive) setCoachResponse(response);
-        })
-        .catch((error) => {
-          if (!isActive) return;
-          setCoachError(
-            error instanceof Error
-              ? error.message
-              : "Gemini could not generate coaching right now.",
-          );
-        })
-        .finally(() => {
-          if (isActive) setCoachLoading(false);
-        });
-    }, 600);
-
-    return () => {
-      isActive = false;
-      clearTimeout(timeoutId);
-    };
-  }, [coachPayload, currentMonth, transactions.length]);
+    try {
+      const response = await generateFinancialCoach(currentMonth, coachPayload);
+      setCoachResponse(response);
+      setLastCoachRefreshAt(
+        new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+    } catch (error) {
+      setCoachError(
+        error instanceof Error
+          ? error.message
+          : "Gemini could not generate coaching right now.",
+      );
+    } finally {
+      setCoachLoading(false);
+    }
+  };
 
   const toggleSection = (
     section: "coach" | "review" | "patterns" | "categories" | "actions",
@@ -655,7 +667,9 @@ export default function AiCoachScreen() {
     {
       description: primaryAction,
       icon: highRiskCount > 0 ? "warning-outline" : "sparkles-outline",
-      meta: coachResponse ? `${coachResponse.tone} coaching` : "Rule-based guidance",
+      meta: coachResponse
+        ? `${coachResponse.tone} coaching${lastCoachRefreshAt ? ` · ${lastCoachRefreshAt}` : ""}`
+        : "Manual Gemini refresh",
       title: highRiskCount > 0 ? "Review this month's risk" : "Keep building your baseline",
       tone: highRiskCount > 0 ? "warning" : "primary",
     },
@@ -767,8 +781,10 @@ export default function AiCoachScreen() {
       <StatusBar barStyle="dark-content" />
       <AppHeader
         rightAction={{
-          accessibilityLabel: "AI Coach options",
-          icon: "sparkles-outline",
+          accessibilityLabel: "Refresh AI Coach",
+          color: palette.primary,
+          icon: coachLoading ? "hourglass-outline" : "refresh-outline",
+          onPress: handleRefreshCoach,
         }}
         title="AI Coach"
       />
@@ -798,10 +814,40 @@ export default function AiCoachScreen() {
                 {coachResponse?.headline || coachStateTitle}
               </Text>
               <Text style={styles.coachStateText} numberOfLines={4}>
-                {coachResponse?.summary || primaryNotice}
+                {coachResponse?.summary ||
+                  `${primaryNotice} Refresh only when you want Gemini to write updated guidance.`}
               </Text>
             </View>
           </View>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={coachLoading}
+            onPress={handleRefreshCoach}
+            style={[
+              styles.refreshCoachButton,
+              coachLoading && styles.refreshCoachButtonDisabled,
+            ]}
+          >
+            {coachLoading ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Ionicons name="refresh" size={17} color="#FFF" />
+            )}
+            <Text style={styles.refreshCoachButtonText}>
+              {coachLoading
+                ? "Refreshing"
+                : coachResponse
+                  ? "Refresh Gemini Coach"
+                  : "Generate Gemini Coach"}
+            </Text>
+          </TouchableOpacity>
+
+          {lastCoachRefreshAt ? (
+            <Text style={styles.coachRefreshMeta}>
+              Last refreshed {lastCoachRefreshAt}
+            </Text>
+          ) : null}
 
           {coachError ? (
             <Text style={styles.geminiError}>
@@ -1197,6 +1243,31 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 21,
     marginTop: 7,
+  },
+  refreshCoachButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: palette.primary,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    marginTop: 16,
+    minHeight: 42,
+    paddingHorizontal: 16,
+  },
+  refreshCoachButtonDisabled: {
+    opacity: 0.72,
+  },
+  refreshCoachButtonText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 8,
+  },
+  coachRefreshMeta: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 8,
   },
   quickStatsRow: {
     flexDirection: "row",
