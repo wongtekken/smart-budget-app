@@ -34,6 +34,7 @@ type Transaction = {
 
 type ExpenseCategory = {
   id: string;
+  isGoal?: boolean;
   name?: string;
   parentId?: string | null;
 };
@@ -55,6 +56,9 @@ const getTransactionTime = (tx: Transaction) =>
   tx.createdAt?.toMillis?.() ?? new Date(tx.date || "1970-01-01").getTime();
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+
+const isSavingsCategoryName = (name?: string) =>
+  String(name || "").toLowerCase().includes("saving");
 
 const getMonthProgress = (month: string) => {
   const activeMonth = getLocalMonthStr();
@@ -175,9 +179,15 @@ export default function DashboardScreen() {
     let expenses = 0;
     let inactiveCategorySpend = 0;
     const spentByCategory: Record<string, number> = {};
+    const parentExpenseCategories = expenseCategories.filter(
+      (category) => !category.parentId && category.name,
+    );
     const activeCategoryNames = new Set(
-      expenseCategories
-        .filter((category) => !category.parentId && category.name)
+      parentExpenseCategories.map((category) => category.name as string),
+    );
+    const savingsCategoryNames = new Set(
+      parentExpenseCategories
+        .filter((category) => category.isGoal || isSavingsCategoryName(category.name))
         .map((category) => category.name as string),
     );
     const shouldFilterCategories = categoriesLoaded;
@@ -224,19 +234,21 @@ export default function DashboardScreen() {
         return {
           name,
           allocated: allocatedAmount,
+          isSavingsCategory: savingsCategoryNames.has(name),
           spent,
           progress,
         };
       })
       .sort((a, b) => b.progress - a.progress);
-    const budgetedCategoryCount = categoryStats.filter((item) => item.allocated > 0).length;
-    const overBudgetCategoryCount = categoryStats.filter(
+    const spendingCategoryStats = categoryStats.filter((item) => !item.isSavingsCategory);
+    const budgetedCategoryCount = spendingCategoryStats.filter((item) => item.allocated > 0).length;
+    const overBudgetCategoryCount = spendingCategoryStats.filter(
       (item) => item.allocated > 0 && item.progress > 1,
     ).length;
-    const warningCategoryCount = categoryStats.filter(
+    const warningCategoryCount = spendingCategoryStats.filter(
       (item) => item.allocated > 0 && item.progress >= 0.85 && item.progress <= 1,
     ).length;
-    const unbudgetedSpent = categoryStats
+    const unbudgetedSpent = spendingCategoryStats
       .filter((item) => item.allocated === 0)
       .reduce((sum, item) => sum + item.spent, 0);
     const unbudgetedShare = expenses > 0 ? unbudgetedSpent / expenses : 0;
@@ -476,9 +488,16 @@ export default function DashboardScreen() {
 
                 {dashboard.categories.length > 0 ? (
                   dashboard.categories.map((item) => {
-                    const isUnbudgeted = item.allocated === 0 && item.spent > 0;
-                    const isAtRisk = item.allocated > 0 && item.progress >= 0.8 && item.progress < 1;
-                    const isOverBudget = item.allocated > 0 && item.spent > item.allocated;
+                    const isSavingsCategory = item.isSavingsCategory;
+                    const isUnbudgeted =
+                      !isSavingsCategory && item.allocated === 0 && item.spent > 0;
+                    const isAtRisk =
+                      !isSavingsCategory &&
+                      item.allocated > 0 &&
+                      item.progress >= 0.8 &&
+                      item.progress < 1;
+                    const isOverBudget =
+                      !isSavingsCategory && item.allocated > 0 && item.spent > item.allocated;
 
                     return (
                       <TouchableOpacity
@@ -493,11 +512,27 @@ export default function DashboardScreen() {
 
                           <View style={styles.breakdownAmountGroup}>
                             <Text style={styles.breakdownAmountText}>
-                              {isUnbudgeted
+                              {isSavingsCategory
+                                ? item.spent > 0
+                                  ? `Saved RM ${item.allocated.toFixed(0)} · Recorded RM ${item.spent.toFixed(0)}`
+                                  : `Saved RM ${item.allocated.toFixed(0)}`
+                                : isUnbudgeted
                                 ? `RM ${item.spent.toFixed(0)} / No budget`
                                 : `RM ${item.spent.toFixed(0)} / RM ${item.allocated.toFixed(0)}`}
                             </Text>
-                            {isUnbudgeted ? (
+                            {isSavingsCategory ? (
+                              <View style={styles.breakdownStatusBadge}>
+                                <Ionicons name="flag" size={14} color={palette.primary} />
+                                <Text
+                                  style={[
+                                    styles.breakdownStatusText,
+                                    { color: palette.primary },
+                                  ]}
+                                >
+                                  Saving
+                                </Text>
+                              </View>
+                            ) : isUnbudgeted ? (
                               <View style={styles.breakdownStatusBadge}>
                                 <Ionicons name="warning" size={14} color={palette.warning} />
                                 <Text
@@ -535,9 +570,19 @@ export default function DashboardScreen() {
                             style={[
                               styles.breakdownProgressFill,
                               {
-                                width: `${isUnbudgeted ? 100 : Math.min(item.progress * 100, 100)}%`,
+                                width: `${
+                                  isSavingsCategory
+                                    ? item.allocated > 0 || item.spent > 0
+                                      ? 100
+                                      : 0
+                                    : isUnbudgeted
+                                      ? 100
+                                      : Math.min(item.progress * 100, 100)
+                                }%`,
                               },
-                              isUnbudgeted
+                              isSavingsCategory
+                                ? styles.breakdownFillPrimary
+                                : isUnbudgeted
                                 ? styles.breakdownFillYellow
                                 : isOverBudget
                                 ? styles.breakdownFillRed
@@ -835,6 +880,9 @@ const styles = StyleSheet.create({
   },
   breakdownFillGreen: {
     backgroundColor: palette.success,
+  },
+  breakdownFillPrimary: {
+    backgroundColor: palette.primary,
   },
   breakdownFillYellow: {
     backgroundColor: palette.warning,

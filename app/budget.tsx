@@ -32,6 +32,9 @@ const getLocalMonthStr = () => {
   return local.toISOString().slice(0, 7);
 };
 
+const isSavingsCategoryName = (name?: string) =>
+  String(name || "").toLowerCase().includes("saving");
+
 type TemplateAllocation = {
   category?: string;
   mode?: "Fixed" | "Percentage";
@@ -509,7 +512,8 @@ export default function BudgetScreen() {
             const allocated = activeAllocations[cat.name] || 0;
 
             // 🚨 UI 劫持：判断这是否是目标存钱罐分类
-            const isGoalCategory = cat.name.startsWith("🎯") || cat.isGoal;
+            const isGoalCategory =
+              cat.name.startsWith("🎯") || cat.isGoal || isSavingsCategoryName(cat.name);
 
             let progress =
               allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
@@ -530,7 +534,9 @@ export default function BudgetScreen() {
                     {/* 🚨 专属文案：如果是 Goal 变蓝色，否则普通红黄绿 */}
                     {isGoalCategory ? (
                       <Text style={[styles.amountText, { color: palette.primary }]}>
-                        Saved: RM {allocated.toFixed(0)}
+                        {spent > 0
+                          ? `Saved: RM ${allocated.toFixed(0)} · Recorded RM ${spent.toFixed(0)}`
+                          : `Saved: RM ${allocated.toFixed(0)}`}
                       </Text>
                     ) : (
                       <>
