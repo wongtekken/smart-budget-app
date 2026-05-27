@@ -255,6 +255,19 @@ export default function BudgetScreen() {
           const hasPercentageAllocation = templateData.some(
             (item) => item.mode === "Percentage" && Number(item.value) > 0,
           );
+          const activeTemplateItems = templateData
+            .map((item) => ({
+              ...item,
+              category: String(item.category || "").trim(),
+              value: Number(item.value) || 0,
+            }))
+            .filter((item) => item.category);
+          const fixedTotal = activeTemplateItems
+            .filter(
+              (item) =>
+                item.mode === "Fixed" && activeCategoryNames.has(item.category),
+            )
+            .reduce((sum, item) => sum + item.value, 0);
 
           if (hasPercentageAllocation && totalAvailable <= 0) {
             showDialog({
@@ -266,12 +279,23 @@ export default function BudgetScreen() {
             return;
           }
 
+          if (fixedTotal > totalAvailable) {
+            showDialog({
+              title: "Template Not Applied",
+              message:
+                "Fixed budgets exceed this month's available amount. Please adjust the template or add more income first.",
+              type: "warning",
+            });
+            router.setParams({ injectedTemplate: "" });
+            return;
+          }
+
           let newAllocations: Record<string, number> = {};
           const skippedCategories: string[] = [];
+          const remainingAfterFixed = totalAvailable - fixedTotal;
 
-          templateData.forEach((item) => {
-            const category = String(item.category || "").trim();
-            if (!category) return;
+          activeTemplateItems.forEach((item) => {
+            const { category } = item;
 
             if (!activeCategoryNames.has(category)) {
               skippedCategories.push(category);
@@ -279,10 +303,10 @@ export default function BudgetScreen() {
             }
 
             if (item.mode === "Fixed") {
-              newAllocations[category] = Number(item.value) || 0;
+              newAllocations[category] = item.value;
             } else if (item.mode === "Percentage") {
               // 自动规整小数位，避免金额变成 19.99999
-              const calculated = (Number(item.value) / 100) * totalAvailable;
+              const calculated = (item.value / 100) * remainingAfterFixed;
               newAllocations[category] = Number(calculated.toFixed(2));
             }
           });
