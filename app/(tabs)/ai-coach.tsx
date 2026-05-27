@@ -890,7 +890,7 @@ export default function AiCoachScreen() {
           </View>
         </View>
 
-        <View style={[styles.section, styles.sectionBelowFold]}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Spending Signals</Text>
           <View style={styles.compactSignalPanel}>
             {compactSignals.length > 0 ? (
@@ -918,7 +918,8 @@ export default function AiCoachScreen() {
             title="Gemini coach details"
           />
           {expandedSection === "coach" && (
-            <View style={styles.detailPanel}>
+            <View style={styles.expandedContent}>
+              <View style={styles.detailPanel}>
               {coachResponse?.notices.length ? (
                 <>
                   <Text style={styles.geminiSubTitle}>Spending notices</Text>
@@ -951,6 +952,7 @@ export default function AiCoachScreen() {
                   ))}
                 </>
               ) : null}
+              </View>
             </View>
           )}
         </View>
@@ -958,13 +960,15 @@ export default function AiCoachScreen() {
         <View style={styles.section}>
           <SectionToggle count={aiInsights.monthlyReview.length} section="review" title="Analytical review" />
           {expandedSection === "review" && (
-            <View style={styles.reviewCard}>
+            <View style={styles.expandedContent}>
+              <View style={styles.reviewCard}>
               {aiInsights.monthlyReview.map((item, index) => (
                 <View key={`${item}-${index}`} style={styles.reviewLine}>
                   <Text style={styles.reviewNumber}>{index + 1}</Text>
                   <Text style={styles.reviewText}>{item}</Text>
                 </View>
               ))}
+              </View>
             </View>
           )}
         </View>
@@ -972,7 +976,7 @@ export default function AiCoachScreen() {
         <View style={styles.section}>
           <SectionToggle count={insightCards.length} section="patterns" title="Insight engine details" />
           {expandedSection === "patterns" && (
-            <>
+            <View style={styles.expandedContent}>
               {insightCards.length > 0 ? (
                 insightCards.map((item, index) => (
                   <InsightCard key={`${item.title}-${index}`} {...item} />
@@ -983,7 +987,7 @@ export default function AiCoachScreen() {
                   personal baseline.
                 </Text>
               )}
-            </>
+            </View>
           )}
         </View>
 
@@ -993,8 +997,9 @@ export default function AiCoachScreen() {
             section="categories"
             title="Category behavior"
           />
-          {expandedSection === "categories" &&
-            aiInsights.categoryBehaviors.slice(0, 6).map((item) => (
+          {expandedSection === "categories" && (
+            <View style={styles.expandedContent}>
+              {aiInsights.categoryBehaviors.slice(0, 6).map((item) => (
               <View key={item.category} style={styles.behaviorRow}>
                 <View style={styles.behaviorCopy}>
                   <Text style={styles.behaviorCategory}>{item.category}</Text>
@@ -1012,7 +1017,9 @@ export default function AiCoachScreen() {
                 </View>
                 <Text style={styles.behaviorTag}>{item.behavior}</Text>
               </View>
-            ))}
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -1027,7 +1034,7 @@ export default function AiCoachScreen() {
             title="Budget actions"
           />
           {expandedSection === "actions" && (
-            <>
+            <View style={styles.expandedContent}>
               {aiInsights.unusedBudgetOpportunities.length > 0 && (
                 <View style={styles.unusedSummaryCard}>
                   <View style={styles.unusedSummaryHeader}>
@@ -1194,7 +1201,7 @@ export default function AiCoachScreen() {
                   </TouchableOpacity>
                 </View>
               ))}
-            </>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -1474,9 +1481,6 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xl,
   },
-  sectionBelowFold: {
-    marginBottom: 128,
-  },
   sectionTitle: {
     color: palette.text,
     fontSize: 19,
@@ -1659,12 +1663,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 3,
   },
+  expandedContent: {
+    marginTop: 10,
+  },
   detailPanel: {
     backgroundColor: palette.surface,
     borderColor: palette.border,
     borderRadius: radius.lg,
     borderWidth: 1,
-    marginTop: 10,
     padding: 14,
   },
   insightCard: {

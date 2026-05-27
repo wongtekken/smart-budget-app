@@ -531,7 +531,10 @@ export default function TemplateScreen() {
                     <TextInput
                       style={styles.draftValueInput}
                       keyboardType="numeric"
+                      multiline={false}
+                      numberOfLines={1}
                       placeholder="0"
+                      scrollEnabled={false}
                       value={draft.value ? draft.value.toString() : ""}
                       onChangeText={(val) =>
                         updateDraftItem(index, "value", Number(val) || 0)
@@ -811,11 +814,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
     borderRadius: 8,
-    width: 60,
-    height: 35,
-    textAlign: "center",
-    fontSize: 14,
+    color: palette.text,
+    fontSize: 16,
     fontWeight: "bold",
+    height: 44,
+    includeFontPadding: false,
+    lineHeight: 20,
+    minWidth: 82,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
+    textAlign: "center",
+    textAlignVertical: "center",
   },
   addDraftBtn: {
     flexDirection: "row",
