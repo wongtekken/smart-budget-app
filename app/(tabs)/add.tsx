@@ -546,8 +546,12 @@ export default function AddTransactionScreen() {
           formatDate(new Date()),
         );
         applyAiResultToForm(result, "voice");
-      } catch {
-        appAlert("Voice Parse Error", "Failed to recognize the voice entry. Please try again.");
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to recognize the voice entry. Please try again.";
+        appAlert("Voice Parse Error", message);
       } finally {
         setAiMode(null);
         setVoiceRecordingPanelVisible(false);
@@ -605,8 +609,12 @@ export default function AddTransactionScreen() {
       setVoiceModalVisible(false);
       setVoiceTranscript("");
       applyAiResultToForm(result, "voice");
-    } catch {
-      appAlert("Voice Parse Error", "Failed to parse the transcript. Please try again.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to parse the transcript. Please try again.";
+      appAlert("Voice Parse Error", message);
     } finally {
       setAiMode(null);
     }
