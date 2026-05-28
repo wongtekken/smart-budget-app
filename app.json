@@ -3,6 +3,9 @@
     "name": "smart-budget-app",
     "slug": "smart-budget-app",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "smartbudgetapp",
@@ -12,6 +15,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.smartbudget.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

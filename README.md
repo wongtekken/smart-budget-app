@@ -2,6 +2,66 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Android APK testing
+
+This project uses Expo EAS Build for Android test builds.
+
+### First-time setup
+
+1. Install dependencies.
+
+   ```bash
+   npm install
+   ```
+
+2. Log in to Expo.
+
+   ```bash
+   npm run eas:login
+   ```
+
+3. Link this app to an Expo/EAS project.
+
+   ```bash
+   npm run eas:init
+   ```
+
+4. Enable EAS Update for over-the-air updates.
+
+   ```bash
+   npm run eas:update:configure
+   ```
+
+### Build an APK for testers
+
+```bash
+npm run build:android:apk
+```
+
+When the build finishes, Expo will show a download link. Send that link to testers so they can download and install the APK on Android.
+
+### Push frequent small updates
+
+Use this when you only changed JavaScript, screens, styles, copy, images, or business logic:
+
+```bash
+npm run update:preview -- --message "Describe the change"
+```
+
+Testers keep the same installed APK and receive the update through EAS Update.
+
+Build a new APK instead when you change native dependencies, permissions, app icon/splash, Expo SDK, React Native, or Android config.
+
+### Production Android build
+
+Use this later for a Google Play-ready Android App Bundle:
+
+```bash
+npm run build:android:production
+```
+
+## Expo development
+
 ## Get started
 
 1. Install dependencies
