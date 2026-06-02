@@ -460,9 +460,11 @@ export default function AiCoachScreen() {
     try {
       const nextBudgetRef = doc(db, "monthly_budgets", `${user.uid}_${nextMonth}`);
       const nextBudgetSnapshot = await getDoc(nextBudgetRef);
-      const nextAllocations = nextBudgetSnapshot.exists()
-        ? nextBudgetSnapshot.data().allocations || {}
+      const nextBudgetData = nextBudgetSnapshot.exists()
+        ? nextBudgetSnapshot.data()
         : {};
+      const nextAllocations = nextBudgetData.allocations || {};
+      const nextRolloverIncome = Number(nextBudgetData.rolloverIncome) || 0;
 
       await setDoc(
         nextBudgetRef,
@@ -473,6 +475,7 @@ export default function AiCoachScreen() {
             ...nextAllocations,
             [category]: Number((Number(nextAllocations[category] || 0) + amount).toFixed(2)),
           },
+          rolloverIncome: Number((nextRolloverIncome + amount).toFixed(2)),
         },
         { merge: true },
       );

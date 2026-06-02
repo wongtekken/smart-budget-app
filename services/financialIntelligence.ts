@@ -13,6 +13,7 @@ export type MonthlyBudgetRecord = {
   id?: string;
   allocations?: Record<string, number>;
   month?: string;
+  rolloverIncome?: number;
   userId?: string;
 };
 

@@ -55,8 +55,8 @@ export default function BudgetScreen() {
   const params = useLocalSearchParams();
   const currentMonthStr = getLocalMonthStr();
 
-  const [previousBalance, setPreviousBalance] = useState(0);
   const [totalIncome, setTotalIncome] = useState(0);
+  const [rolloverIncome, setRolloverIncome] = useState(0);
   const [expensesByCategory, setExpensesByCategory] = useState<
     Record<string, number>
   >({});
@@ -105,9 +105,7 @@ export default function BudgetScreen() {
       where("userId", "==", user.uid),
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let histIncome = 0,
-        histExpense = 0,
-        currIncome = 0;
+      let currIncome = 0;
       let expensesCalc: Record<string, number> = {};
       const startOfThisMonth = `${currentMonthStr}-01`;
       const endOfThisMonth = `${currentMonthStr}-31`;
@@ -121,10 +119,7 @@ export default function BudgetScreen() {
           : "Uncategorized";
         const isLegacyGoalExpense = tx.type === "Expense" && isGoalCategoryName(parentCatName);
 
-        if (txDate < startOfThisMonth) {
-          if (tx.type === "Income") histIncome += amount;
-          if (tx.type === "Expense" && !isLegacyGoalExpense) histExpense += amount;
-        } else if (txDate >= startOfThisMonth && txDate <= endOfThisMonth) {
+        if (txDate >= startOfThisMonth && txDate <= endOfThisMonth) {
           if (tx.type === "Income") currIncome += amount;
           else if (tx.type === "Expense" && !isLegacyGoalExpense) {
             if (!expensesCalc[parentCatName]) expensesCalc[parentCatName] = 0;
@@ -132,7 +127,6 @@ export default function BudgetScreen() {
           }
         }
       });
-      setPreviousBalance(histIncome - histExpense);
       setTotalIncome(currIncome);
       setExpensesByCategory(expensesCalc);
       setTransactionsLoaded(true);
@@ -149,9 +143,12 @@ export default function BudgetScreen() {
       doc(db, "monthly_budgets", budgetDocId),
       (docSnap) => {
         if (docSnap.exists()) {
-          setAllocations(docSnap.data().allocations || {});
+          const data = docSnap.data();
+          setAllocations(data.allocations || {});
+          setRolloverIncome(Number(data.rolloverIncome) || 0);
         } else {
           setAllocations({});
+          setRolloverIncome(0);
         }
         setBudgetLoaded(true);
       },
@@ -162,7 +159,7 @@ export default function BudgetScreen() {
   // ==========================================
   // 🧠 核心算力：计算资金与活跃状态
   // ==========================================
-  const totalAvailable = totalIncome;
+  const totalAvailable = totalIncome + rolloverIncome;
   const parentCategories = useMemo(
     () =>
       expenseCategories.filter(
@@ -490,20 +487,15 @@ export default function BudgetScreen() {
             RM {awaitingAssign.toFixed(2)}
           </Text>
 
-          {previousBalance !== 0 && (
+          {rolloverIncome > 0 && (
             <View style={styles.rolloverBadge}>
               <Ionicons
-                name={
-                  previousBalance > 0 ? "arrow-down-circle" : "alert-circle"
-                }
+                name="arrow-down-circle"
                 size={16}
                 color="#B77B00"
               />
               <Text style={styles.rolloverText}>
-                {previousBalance > 0
-                  ? "Historical balance: +"
-                  : "Historical balance: "}{" "}
-                RM {previousBalance.toFixed(2)}
+                Rollover income: + RM {rolloverIncome.toFixed(2)}
               </Text>
             </View>
           )}
