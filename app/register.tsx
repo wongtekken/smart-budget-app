@@ -25,31 +25,6 @@ import {
 import { doc, setDoc } from "firebase/firestore"; // 🚨 引入 firestore 写入方法
 import { auth, db } from "../firebaseConfig"; // 确保你导出了 db
 
-// ==========================================
-// 🚨 1. 准备“新手大礼包” (系统自带的不可删除分类)
-// ==========================================
-/*
-  // 支出 (Expense)
-  { name: "Food", type: "Expense", icon: "fast-food-outline", isDefault: true },
-  { name: "Transport", type: "Expense", icon: "car-outline", isDefault: true },
-  { name: "Shopping", type: "Expense", icon: "cart-outline", isDefault: true },
-  { name: "Housing", type: "Expense", icon: "home-outline", isDefault: true },
-  {
-    name: "Utilities",
-    type: "Expense",
-    icon: "flash-outline",
-    isDefault: true,
-  },
-  // 收入 (Income)
-  { name: "Salary", type: "Income", icon: "cash-outline", isDefault: true },
-  {
-    name: "Investment",
-    type: "Income",
-    icon: "trending-up-outline",
-    isDefault: true,
-  },
-*/
-
 export default function RegisterScreen() {
   const router = useRouter();
   const { showDialog } = useAppDialog();
