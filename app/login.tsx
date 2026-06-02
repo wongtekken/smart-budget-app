@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 // 🚨 新增：引入 Firebase 登录魔法和配置文件
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius } from "../constants/ui";
 import { auth } from "../firebaseConfig";
@@ -30,6 +30,16 @@ export default function LoginScreen() {
   // 🚨 新增：数据状态控制 (收集用户输入)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        router.replace("/(tabs)");
+      }
+    });
+
+    return unsubscribe;
+  }, [router]);
 
   // 🚨 新增：处理登录的核心逻辑
   const handleLogin = async () => {

@@ -16,7 +16,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
 // 🚨 使用带有持久化记忆的 auth 初始化方式
 export const auth =
   typeof getReactNativePersistence === "function"
@@ -24,3 +23,5 @@ export const auth =
         persistence: getReactNativePersistence(ReactNativeAsyncStorage),
       })
     : getAuth(app);
+
+export const db = getFirestore(app);
