@@ -123,8 +123,8 @@ export default function BudgetScreen() {
         const tx = doc.data();
         const amount = Number(tx.amount) || 0;
         const txDate = tx.date || "1970-01-01";
-        const parentCatName = tx.categoryParentName || (tx.categoryName || tx.category
-          ? String(tx.categoryName || tx.category).split(" - ")[0]
+        const parentCatName = tx.categoryParentName || (tx.categoryName
+          ? String(tx.categoryName).split(" - ")[0]
           : "Uncategorized");
         const parentCategoryKey = getParentCategoryKey(tx, expenseCategories);
         const isLegacyGoalExpense = tx.type === "Expense" && isGoalCategoryName(parentCatName);

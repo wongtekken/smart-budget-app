@@ -30,7 +30,6 @@ import {
 type Transaction = {
   id: string;
   amount?: number | string;
-  category?: string;
   categoryId?: string | null;
   categoryName?: string;
   categoryParentId?: string | null;
@@ -255,8 +254,8 @@ export default function DashboardScreen() {
       }
 
       if (type === "expense") {
-        const parentCategoryName = tx.categoryParentName || (tx.categoryName || tx.category
-          ? String(tx.categoryName || tx.category).split(" - ")[0]
+        const parentCategoryName = tx.categoryParentName || (tx.categoryName
+          ? String(tx.categoryName).split(" - ")[0]
           : "Uncategorized");
         const parentCategoryKey = getParentCategoryKey(tx, expenseCategories);
         if (goalCategoryNames.has(parentCategoryName) || goalCategoryKeys.has(parentCategoryKey)) return;
@@ -526,7 +525,7 @@ export default function DashboardScreen() {
                         </View>
                         <View style={styles.transactionText}>
                           <Text style={styles.transactionTitle} numberOfLines={1}>
-                            {tx.categoryName || tx.category || tx.note || "Uncategorized"}
+                            {tx.categoryName || tx.note || "Uncategorized"}
                           </Text>
                           <Text style={styles.transactionDate}>{tx.date || "No date"}</Text>
                         </View>

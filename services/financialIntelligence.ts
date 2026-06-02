@@ -1,7 +1,6 @@
 export type TransactionRecord = {
   id?: string;
   amount?: number | string;
-  category?: string;
   categoryId?: string | null;
   categoryName?: string;
   categoryParentId?: string | null;
@@ -30,7 +29,6 @@ export type GoalRecord = {
 
 export type RecurringRecord = {
   amount?: number | string;
-  category?: string;
   categoryName?: string;
   frequency?: string;
   isActive?: boolean;
@@ -109,7 +107,7 @@ const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Uncategorized";
 
 const getTransactionCategory = (transaction: TransactionRecord | RecurringRecord) =>
-  transaction.categoryName || transaction.category || "Uncategorized";
+  transaction.categoryName || "Uncategorized";
 
 const isGoalCategoryName = (category?: string) => getParentCategory(category).startsWith("🎯");
 

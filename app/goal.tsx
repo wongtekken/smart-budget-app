@@ -44,7 +44,6 @@ type GoalType = {
 
 type GoalTransaction = {
   amount?: number | string;
-  category?: string;
   categoryName?: string;
   goalId?: string | null;
   type?: string;
@@ -132,7 +131,7 @@ export default function GoalScreen() {
     const categoryName = getGoalCategoryName(goal.title);
     const contributionSum = goalTransactions.reduce((sum, tx) => {
       const txType = String(tx.type || "").toLowerCase();
-      const parentCategory = getParentCategory(tx.categoryName || tx.category);
+      const parentCategory = getParentCategory(tx.categoryName);
       const isTransferContribution =
         txType === "transfer" &&
         ((goal.id && tx.goalId === goal.id) || parentCategory === categoryName);

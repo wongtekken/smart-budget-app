@@ -115,7 +115,7 @@ export default function TransactionsScreen() {
 
   const groupedTransactions = monthlyTransactions
     .filter((item) =>
-      (item.categoryName || item.category || item.note || "")
+      (item.categoryName || item.note || "")
         .toLowerCase()
         .includes(searchQuery.toLowerCase()),
     )
@@ -291,7 +291,7 @@ export default function TransactionsScreen() {
                     >
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemName} numberOfLines={1}>
-                          {item.categoryName || item.category || item.note || "Uncategorized"}
+                          {item.categoryName || item.note || "Uncategorized"}
                         </Text>
                         {item.recurring && item.recurring !== "Never" && (
                           <Ionicons
@@ -372,7 +372,7 @@ export default function TransactionsScreen() {
                   <DetailRow
                     icon="pricetag-outline"
                     label="Category"
-                    value={selectedTx?.categoryName || selectedTx?.category || "None"}
+                    value={selectedTx?.categoryName || "None"}
                   />
                   <DetailRow
                     icon="calendar-outline"
@@ -451,10 +451,10 @@ export default function TransactionsScreen() {
                         ? selectedTx.amount.toString()
                         : "",
                       returnedCategory:
-                        selectedTx.categoryName || selectedTx.category || "",
+                        selectedTx.categoryName || "",
                       returnedCategoryId: selectedTx.categoryId || "",
                       returnedCategoryName:
-                        selectedTx.categoryName || selectedTx.category || "",
+                        selectedTx.categoryName || "",
                       returnedCategoryParentId: selectedTx.categoryParentId || "",
                       returnedCategoryParentName: selectedTx.categoryParentName || "",
                       returnedGoalId: selectedTx.goalId || "",

@@ -57,7 +57,7 @@ const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Other";
 
 const getTransactionCategory = (tx: any) =>
-  tx.categoryName || tx.category || "Other";
+  tx.categoryName || "Other";
 
 const isGoalCategoryName = (category?: string) =>
   getParentCategory(category).startsWith("🎯");

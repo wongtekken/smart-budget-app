@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -188,7 +189,6 @@ export default function AddTransactionScreen() {
         : null);
 
     return {
-      category: selectedByName?.category || categoryName,
       categoryId: selectedByName?.categoryId || categoryId || null,
       categoryName: selectedByName?.categoryName || categoryName,
       categoryParentId:
@@ -785,7 +785,7 @@ export default function AddTransactionScreen() {
 
         await updateDoc(doc(db, "transactions", editId), {
           amount: numericAmount,
-          category: categoryFields.category,
+          category: deleteField(),
           categoryId: categoryFields.categoryId,
           categoryName: categoryFields.categoryName,
           categoryParentId: categoryFields.categoryParentId,
@@ -806,7 +806,7 @@ export default function AddTransactionScreen() {
             {
               userId: user.uid,
               amount: numericAmount,
-              category: categoryFields.category,
+              category: deleteField(),
               categoryId: categoryFields.categoryId,
               categoryName: categoryFields.categoryName,
               categoryParentId: categoryFields.categoryParentId,
@@ -833,7 +833,6 @@ export default function AddTransactionScreen() {
         const savedTransaction: TransactionRecord = {
           id: editId,
           amount: numericAmount,
-          category: categoryFields.category,
           categoryId: categoryFields.categoryId,
           categoryName: categoryFields.categoryName,
           categoryParentId: categoryFields.categoryParentId,
@@ -861,7 +860,6 @@ export default function AddTransactionScreen() {
         await setDoc(transactionRef, {
           userId: user.uid,
           amount: numericAmount,
-          category: categoryFields.category,
           categoryId: categoryFields.categoryId,
           categoryName: categoryFields.categoryName,
           categoryParentId: categoryFields.categoryParentId,
@@ -881,7 +879,6 @@ export default function AddTransactionScreen() {
           await setDoc(recurringRef, {
             userId: user.uid,
             amount: numericAmount,
-            category: categoryFields.category,
             categoryId: categoryFields.categoryId,
             categoryName: categoryFields.categoryName,
             categoryParentId: categoryFields.categoryParentId,
@@ -901,7 +898,6 @@ export default function AddTransactionScreen() {
         const savedTransaction: TransactionRecord = {
           id: transactionRef.id,
           amount: numericAmount,
-          category: categoryFields.category,
           categoryId: categoryFields.categoryId,
           categoryName: categoryFields.categoryName,
           categoryParentId: categoryFields.categoryParentId,

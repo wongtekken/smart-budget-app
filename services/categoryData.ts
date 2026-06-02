@@ -7,7 +7,6 @@ export type CategoryRecord = {
 };
 
 export type CategoryBackedRecord = {
-  category?: string;
   categoryId?: string | null;
   categoryName?: string;
   categoryParentId?: string | null;
@@ -27,7 +26,7 @@ export const getLegacyParentCategoryName = (category?: string) =>
   category ? category.split(" - ")[0] : "Uncategorized";
 
 export const getDisplayCategoryName = (record?: CategoryBackedRecord | null) =>
-  record?.categoryName || record?.category || "Uncategorized";
+  record?.categoryName || "Uncategorized";
 
 export const getCategoryPathName = (
   category: CategoryRecord,
