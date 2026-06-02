@@ -32,7 +32,10 @@ export type AchievementType = {
   iconFamily: AchievementIconFamily;
   progress: number;
   isUnlocked: boolean;
+  tier?: AchievementTier;
 };
+
+export type AchievementTier = "Bronze" | "Silver" | "Gold" | "Platinum";
 
 type AchievementMetrics = {
   customCategoryCount: number;
@@ -47,7 +50,9 @@ type AchievementMetrics = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export const ACHIEVEMENTS_TOTAL = 14;
+export const ACHIEVEMENTS_TOTAL = 18;
+
+const TIER_SEQUENCE: AchievementTier[] = ["Bronze", "Silver", "Gold", "Platinum"];
 
 const clampProgress = (current: number, target: number) =>
   Math.min(100, Math.round((current / target) * 100));
@@ -165,6 +170,39 @@ const getMetrics = (
   };
 };
 
+const tierId = (tier: AchievementTier) => tier.toLowerCase();
+
+const buildTieredSet = ({
+  baseId,
+  description,
+  iconFamily,
+  iconName,
+  title,
+  value,
+  targets,
+}: {
+  baseId: string;
+  description: (target: number, tier: AchievementTier) => string;
+  iconFamily: AchievementIconFamily;
+  iconName: string;
+  title: string;
+  value: number;
+  targets: number[];
+}): AchievementType[] =>
+  targets.map((target, index) => {
+    const tier = TIER_SEQUENCE[index];
+    return {
+      id: `${baseId}-${tierId(tier)}`,
+      title: `${tier} ${title}`,
+      description: description(target, tier),
+      iconName,
+      iconFamily,
+      progress: clampProgress(value, target),
+      isUnlocked: value >= target,
+      tier,
+    };
+  });
+
 export const buildAchievements = (
   categories: AchievementCategoryData[],
   templates: AchievementTemplateData[],
@@ -183,33 +221,24 @@ export const buildAchievements = (
       progress: clampProgress(metrics.transactionCount, 1),
       isUnlocked: metrics.transactionCount >= 1,
     },
-    {
-      id: "category-creator",
-      title: "Category Creator",
-      description: "Create the first category",
-      iconName: "human-handsup",
+    ...buildTieredSet({
+      baseId: "transaction-tracker",
+      title: "Transaction Tracker",
+      description: (target) => `Record a total of ${target} transactions`,
+      iconName: "trophy-outline",
+      iconFamily: "Ionicons",
+      value: metrics.transactionCount,
+      targets: [10, 50, 100, 500],
+    }),
+    ...buildTieredSet({
+      baseId: "streak-builder",
+      title: "Streak Builder",
+      description: (target) => `Keep tracking for ${target} consecutive days`,
+      iconName: "calendar-star",
       iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.customCategoryCount, 1),
-      isUnlocked: metrics.customCategoryCount >= 1,
-    },
-    {
-      id: "template-trailblazer",
-      title: "Template Trailblazer",
-      description: "Create the first template",
-      iconName: "map-signs",
-      iconFamily: "FontAwesome5",
-      progress: clampProgress(metrics.templateCount, 1),
-      isUnlocked: metrics.templateCount >= 1,
-    },
-    {
-      id: "week-one-warrior",
-      title: "Week One Warrior",
-      description: "Keep tracking for 7 consecutive days",
-      iconName: "calendar-week",
-      iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.maxTrackingStreak, 7),
-      isUnlocked: metrics.maxTrackingStreak >= 7,
-    },
+      value: metrics.maxTrackingStreak,
+      targets: [7, 30, 180, 365],
+    }),
     {
       id: "monthly-mastery",
       title: "Monthly Mastery",
@@ -221,69 +250,24 @@ export const buildAchievements = (
         : metrics.maxCalendarMonthProgress,
       isUnlocked: metrics.hasCompleteCalendarMonth,
     },
-    {
-      id: "half-year-hustler",
-      title: "Half-Year Hustler",
-      description: "Keep tracking for 180 consecutive days",
-      iconName: "calendar-star",
-      iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.maxTrackingStreak, 180),
-      isUnlocked: metrics.maxTrackingStreak >= 180,
-    },
-    {
-      id: "year-long-legend",
-      title: "Year-Long Legend",
-      description: "Keep tracking for 365 consecutive days",
-      iconName: "calendar-crown",
-      iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.maxTrackingStreak, 365),
-      isUnlocked: metrics.maxTrackingStreak >= 365,
-    },
-    {
-      id: "perfect-ten",
-      title: "Perfect Ten",
-      description: "Record a total of 10 transactions",
-      iconName: "trophy-outline",
-      iconFamily: "Ionicons",
-      progress: clampProgress(metrics.transactionCount, 10),
-      isUnlocked: metrics.transactionCount >= 10,
-    },
-    {
-      id: "hundred-forged-hero",
-      title: "Hundred-Forged Hero",
-      description: "Record a total of 100 transactions",
-      iconName: "medal",
-      iconFamily: "FontAwesome5",
-      progress: clampProgress(metrics.transactionCount, 100),
-      isUnlocked: metrics.transactionCount >= 100,
-    },
-    {
-      id: "thousand-transaction-titan",
-      title: "Thousand-Transaction Titan",
-      description: "Record a total of 1000 transactions",
-      iconName: "yen-sign",
-      iconFamily: "FontAwesome5",
-      progress: clampProgress(metrics.transactionCount, 1000),
-      isUnlocked: metrics.transactionCount >= 1000,
-    },
-    {
-      id: "template-master",
-      title: "Template Master",
-      description: "Create more than 3 custom budget templates",
+    ...buildTieredSet({
+      baseId: "template-architect",
+      title: "Template Architect",
+      description: (target) => `Create ${target} custom budget template${target > 1 ? "s" : ""}`,
       iconName: "chart-pie",
       iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.templateCount, 4),
-      isUnlocked: metrics.templateCount > 3,
-    },
-    {
-      id: "category-connoisseur",
-      title: "Category Connoisseur",
-      description: "Create more than 5 custom categories",
+      value: metrics.templateCount,
+      targets: [1, 2, 4, 8],
+    }),
+    ...buildTieredSet({
+      baseId: "category-architect",
+      title: "Category Architect",
+      description: (target) => `Create ${target} custom categor${target > 1 ? "ies" : "y"}`,
       iconName: "shape-plus",
       iconFamily: "MaterialCommunity",
-      progress: clampProgress(metrics.customCategoryCount, 6),
-      isUnlocked: metrics.customCategoryCount > 5,
-    },
+      value: metrics.customCategoryCount,
+      targets: [1, 3, 6, 10],
+    }),
     {
       id: "voice-tracking-victory",
       title: "Voice Tracking Victory",
