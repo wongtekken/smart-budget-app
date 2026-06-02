@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import { AchievementUnlockMonitor } from '@/components/achievement-unlock-monitor';
 import { AppDialogProvider } from '@/components/app-dialog';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -20,6 +21,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>
+        <AchievementUnlockMonitor />
         <StatusBar style="auto" />
       </AppDialogProvider>
     </ThemeProvider>

@@ -1,8 +1,7 @@
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,7 +12,6 @@ import {
   View,
 } from "react-native";
 import { AppHeader } from "../components/app-header";
-import { useAppDialog } from "../components/app-dialog";
 import {
   AchievementCategoryData,
   AchievementEventData,
@@ -49,8 +47,6 @@ const getStatusLabel = (item: AchievementType) => {
 };
 
 export default function AchievementsScreen() {
-  const { showDialog } = useAppDialog();
-  const popupInFlightRef = useRef(false);
   const [categories, setCategories] = useState<AchievementCategoryData[]>([]);
   const [templates, setTemplates] = useState<AchievementTemplateData[]>([]);
   const [transactions, setTransactions] = useState<AchievementTransactionData[]>(
@@ -59,7 +55,6 @@ export default function AchievementsScreen() {
   const [events, setEvents] = useState<AchievementEventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<AchievementFilter>("All");
-  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubscribers: (() => void)[] = [];
@@ -69,7 +64,6 @@ export default function AchievementsScreen() {
       unsubscribers = [];
 
       if (!user) {
-        setUserId(null);
         setCategories([]);
         setTemplates([]);
         setTransactions([]);
@@ -78,7 +72,6 @@ export default function AchievementsScreen() {
         return;
       }
 
-      setUserId(user.uid);
       setLoading(true);
 
       unsubscribers.push(
@@ -148,79 +141,6 @@ export default function AchievementsScreen() {
     () => buildAchievements(categories, templates, transactions, events),
     [categories, events, templates, transactions],
   );
-
-  useEffect(() => {
-    if (loading || !userId) return;
-
-    const unlockedAchievements = achievements.filter((item) => item.isUnlocked);
-    if (unlockedAchievements.length === 0) return;
-
-    let cancelled = false;
-    const storageKey = `seen_achievements_${userId}`;
-
-    const syncAchievementPopups = async () => {
-      try {
-        const storedValue = await AsyncStorage.getItem(storageKey);
-
-        if (cancelled) return;
-
-        if (!storedValue) {
-          await AsyncStorage.setItem(
-            storageKey,
-            JSON.stringify(unlockedAchievements.map((item) => item.id)),
-          );
-          return;
-        }
-
-        const parsedSeenIds = JSON.parse(storedValue);
-        const seenIds = new Set<string>(
-          Array.isArray(parsedSeenIds)
-            ? parsedSeenIds.filter((id) => typeof id === "string")
-            : [],
-        );
-        const newlyUnlocked = unlockedAchievements.filter(
-          (item) => !seenIds.has(item.id),
-        );
-
-        if (newlyUnlocked.length === 0) return;
-
-        const nextSeenIds = new Set([
-          ...Array.from(seenIds),
-          ...newlyUnlocked.map((item) => item.id),
-        ]);
-        await AsyncStorage.setItem(storageKey, JSON.stringify(Array.from(nextSeenIds)));
-
-        if (cancelled || popupInFlightRef.current) return;
-
-        const unlocked = newlyUnlocked[0];
-        popupInFlightRef.current = true;
-        showDialog({
-          title: "Achievement Unlocked",
-          message: `${unlocked.title}\n${unlocked.description}`,
-          type: "success",
-          onCancel: () => {
-            popupInFlightRef.current = false;
-          },
-          actions: [
-            {
-              label: "Nice",
-              onPress: () => {
-                popupInFlightRef.current = false;
-              },
-            },
-          ],
-        });
-      } catch (error) {
-        console.error("Achievement popup sync failed:", error);
-      }
-    };
-
-    syncAchievementPopups();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [achievements, loading, showDialog, userId]);
 
   const unlockedCount = achievements.filter((item) => item.isUnlocked).length;
   const completionRate =
