@@ -113,11 +113,21 @@ export default function CategoryScreen() {
   };
 
   // 🚨 4. 核心选定逻辑：带着选中的名字和行李滚回 Add 页面
-  const handleSelectCategory = (categoryName: string, goalId = "") => {
+  const handleSelectCategory = (
+    categoryName: string,
+    categoryId: string,
+    categoryParentId: string,
+    categoryParentName: string,
+    goalId = "",
+  ) => {
     router.navigate({
       pathname: "/(tabs)/add",
       params: {
         returnedCategory: categoryName,
+        returnedCategoryId: categoryId,
+        returnedCategoryName: categoryName,
+        returnedCategoryParentId: categoryParentId,
+        returnedCategoryParentName: categoryParentName,
         returnedType: currentType,
         returnedGoalId: goalId,
         returnedAmount: params.savedAmount,
@@ -183,7 +193,13 @@ export default function CategoryScreen() {
                     onPress={() => {
                       // 🚨 智能逻辑：如果没有小类，直接选中它！如果有小类，才展开！
                       if (subs.length === 0) {
-                        handleSelectCategory(parent.name, parent.goalId || "");
+                        handleSelectCategory(
+                          parent.name,
+                          parent.id,
+                          parent.id,
+                          parent.name,
+                          parent.goalId || "",
+                        );
                       } else {
                         toggleExpand(parent.id);
                       }
@@ -251,6 +267,9 @@ export default function CategoryScreen() {
                             onPress={() =>
                               handleSelectCategory(
                                 `${parent.name} - ${sub.name}`,
+                                sub.id,
+                                parent.id,
+                                parent.name,
                                 sub.goalId || parent.goalId || "",
                               )
                             } // 组合名字！

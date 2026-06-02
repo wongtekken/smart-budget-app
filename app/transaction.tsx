@@ -115,7 +115,7 @@ export default function TransactionsScreen() {
 
   const groupedTransactions = monthlyTransactions
     .filter((item) =>
-      (item.category || item.note || "")
+      (item.categoryName || item.category || item.note || "")
         .toLowerCase()
         .includes(searchQuery.toLowerCase()),
     )
@@ -291,7 +291,7 @@ export default function TransactionsScreen() {
                     >
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemName} numberOfLines={1}>
-                          {item.category || item.note || "Uncategorized"}
+                          {item.categoryName || item.category || item.note || "Uncategorized"}
                         </Text>
                         {item.recurring && item.recurring !== "Never" && (
                           <Ionicons
@@ -372,7 +372,7 @@ export default function TransactionsScreen() {
                   <DetailRow
                     icon="pricetag-outline"
                     label="Category"
-                    value={selectedTx?.category || "None"}
+                    value={selectedTx?.categoryName || selectedTx?.category || "None"}
                   />
                   <DetailRow
                     icon="calendar-outline"
@@ -450,7 +450,13 @@ export default function TransactionsScreen() {
                       returnedAmount: selectedTx.amount
                         ? selectedTx.amount.toString()
                         : "",
-                      returnedCategory: selectedTx.category || "",
+                      returnedCategory:
+                        selectedTx.categoryName || selectedTx.category || "",
+                      returnedCategoryId: selectedTx.categoryId || "",
+                      returnedCategoryName:
+                        selectedTx.categoryName || selectedTx.category || "",
+                      returnedCategoryParentId: selectedTx.categoryParentId || "",
+                      returnedCategoryParentName: selectedTx.categoryParentName || "",
                       returnedGoalId: selectedTx.goalId || "",
                       returnedNote: selectedTx.note || "",
                       returnedDate: selectedTx.date || "",

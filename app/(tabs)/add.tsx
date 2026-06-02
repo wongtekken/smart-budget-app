@@ -48,6 +48,11 @@ import {
   TransactionRecord,
 } from "../../services/financialIntelligence";
 import { getNextRecurringDate } from "../../services/recurringService";
+import {
+  allocationsByCategoryName,
+  CategoryRecord,
+  findCategorySelection,
+} from "../../services/categoryData";
 
 // 🚨 新增：引入你写好的 AI 解析服务
 import {
@@ -109,6 +114,10 @@ export default function AddTransactionScreen() {
   const recorderState = useAudioRecorderState(audioRecorder);
   const {
     returnedCategory,
+    returnedCategoryId,
+    returnedCategoryName,
+    returnedCategoryParentId,
+    returnedCategoryParentName,
     returnedType,
     returnedAmount,
     returnedNote,
@@ -124,9 +133,13 @@ export default function AddTransactionScreen() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editRecurringId, setEditRecurringId] = useState<string | null>(null);
   const [category, setCategory] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [categoryParentId, setCategoryParentId] = useState("");
+  const [categoryParentName, setCategoryParentName] = useState("");
   const [selectedGoalId, setSelectedGoalId] = useState("");
   const [note, setNote] = useState("");
   const [selectedSegment, setSelectedSegment] = useState("Expense");
+  const [userCategories, setUserCategories] = useState<CategoryType[]>([]);
   const [userCategoryNames, setUserCategoryNames] = useState<string[]>([]);
   const [, setIsAiLoading] = useState(false);
   const [aiMode, setAiMode] = useState<"receipt" | "voice" | null>(null);
@@ -154,6 +167,51 @@ export default function AddTransactionScreen() {
   const formatDate = (d: Date) => {
     const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
     return localDate.toISOString().split("T")[0];
+  };
+
+  const resolveCategorySelection = (categoryName = category) => {
+    const selectedFromId = categoryId
+      ? userCategories.find((item) => item.id === categoryId)
+      : null;
+    const selectedByName =
+      findCategorySelection(
+        categoryName,
+        selectedSegment,
+        userCategories as CategoryRecord[],
+      ) ||
+      (selectedFromId
+        ? findCategorySelection(
+            categoryName || selectedFromId.name,
+            selectedSegment,
+            userCategories as CategoryRecord[],
+          )
+        : null);
+
+    return {
+      category: selectedByName?.category || categoryName,
+      categoryId: selectedByName?.categoryId || categoryId || null,
+      categoryName: selectedByName?.categoryName || categoryName,
+      categoryParentId:
+        selectedByName?.categoryParentId || categoryParentId || categoryId || null,
+      categoryParentName:
+        selectedByName?.categoryParentName ||
+        categoryParentName ||
+        categoryName.split(" - ")[0] ||
+        "",
+    };
+  };
+
+  const applyCategorySelection = (categoryName: string) => {
+    const resolved = findCategorySelection(
+      categoryName,
+      selectedSegment,
+      userCategories as CategoryRecord[],
+    );
+
+    setCategory(resolved?.category || categoryName);
+    setCategoryId(resolved?.categoryId || "");
+    setCategoryParentId(resolved?.categoryParentId || "");
+    setCategoryParentName(resolved?.categoryParentName || "");
   };
 
   const formatRecordingTime = (seconds: number) => {
@@ -274,6 +332,7 @@ export default function AddTransactionScreen() {
         id: categoryDoc.id,
         ...categoryDoc.data(),
       })) as CategoryType[];
+      setUserCategories(categories);
       const isGoalCategory = (item: CategoryType) =>
         Boolean(item.isGoal) || item.name.startsWith("🎯");
       const expenseCategories = categories.filter(
@@ -300,6 +359,16 @@ export default function AddTransactionScreen() {
   // 极其安全的监听参数逻辑
   useEffect(() => {
     if (returnedCategory) setCategory(returnedCategory as string);
+    if (returnedCategoryId) setCategoryId(returnedCategoryId as string);
+    if (returnedCategoryParentId) {
+      setCategoryParentId(returnedCategoryParentId as string);
+    }
+    if (returnedCategoryParentName) {
+      setCategoryParentName(returnedCategoryParentName as string);
+    }
+    if (returnedCategoryName && !returnedCategory) {
+      setCategory(returnedCategoryName as string);
+    }
     if (returnedType) setSelectedSegment(returnedType as string);
     if (returnedAmount) setAmount(returnedAmount as string);
     if (returnedNote) setNote(returnedNote as string);
@@ -322,6 +391,10 @@ export default function AddTransactionScreen() {
     }
   }, [
     returnedCategory,
+    returnedCategoryId,
+    returnedCategoryName,
+    returnedCategoryParentId,
+    returnedCategoryParentName,
     returnedType,
     returnedAmount,
     returnedNote,
@@ -386,7 +459,7 @@ export default function AddTransactionScreen() {
             "AI couldn't map this to your existing categories. Amount is filled, please select a category manually.",
           );
         } else if (result.category) {
-          setCategory(result.category);
+          applyCategorySelection(result.category);
           appAlert(
             "✨ Smart Parse Success",
             "Form autofilled. Please review and save.",
@@ -420,7 +493,7 @@ export default function AddTransactionScreen() {
         : categoryFallback;
 
     if (result.amount) setAmount(result.amount.toString());
-    if (resolvedCategory) setCategory(resolvedCategory);
+    if (resolvedCategory) applyCategorySelection(resolvedCategory);
     if (result.note || result.item_description) {
       setNote(result.note || result.item_description || "");
     }
@@ -658,7 +731,11 @@ export default function AddTransactionScreen() {
       monthTransactions.push(savedTransaction);
     }
 
-    return createReactiveBudgetAlert(savedTransaction, monthTransactions, allocations);
+    return createReactiveBudgetAlert(
+      savedTransaction,
+      monthTransactions,
+      allocationsByCategoryName(allocations, userCategories as CategoryRecord[]),
+    );
   };
 
   // ==========================================
@@ -693,6 +770,7 @@ export default function AddTransactionScreen() {
               entrySource,
               source: entrySource,
             };
+      const categoryFields = resolveCategorySelection();
       let saveMessage = editId
         ? "Transaction updated successfully."
         : "Transaction saved successfully.";
@@ -707,7 +785,11 @@ export default function AddTransactionScreen() {
 
         await updateDoc(doc(db, "transactions", editId), {
           amount: numericAmount,
-          category: category,
+          category: categoryFields.category,
+          categoryId: categoryFields.categoryId,
+          categoryName: categoryFields.categoryName,
+          categoryParentId: categoryFields.categoryParentId,
+          categoryParentName: categoryFields.categoryParentName,
           note: note,
           date: formatDate(date),
           type: selectedSegment,
@@ -724,7 +806,11 @@ export default function AddTransactionScreen() {
             {
               userId: user.uid,
               amount: numericAmount,
-              category: category,
+              category: categoryFields.category,
+              categoryId: categoryFields.categoryId,
+              categoryName: categoryFields.categoryName,
+              categoryParentId: categoryFields.categoryParentId,
+              categoryParentName: categoryFields.categoryParentName,
               note: note,
               type: selectedSegment,
               frequency: recurring,
@@ -747,7 +833,11 @@ export default function AddTransactionScreen() {
         const savedTransaction: TransactionRecord = {
           id: editId,
           amount: numericAmount,
-          category,
+          category: categoryFields.category,
+          categoryId: categoryFields.categoryId,
+          categoryName: categoryFields.categoryName,
+          categoryParentId: categoryFields.categoryParentId,
+          categoryParentName: categoryFields.categoryParentName,
           date: formatDate(date),
           note,
           recurring,
@@ -771,7 +861,11 @@ export default function AddTransactionScreen() {
         await setDoc(transactionRef, {
           userId: user.uid,
           amount: numericAmount,
-          category: category,
+          category: categoryFields.category,
+          categoryId: categoryFields.categoryId,
+          categoryName: categoryFields.categoryName,
+          categoryParentId: categoryFields.categoryParentId,
+          categoryParentName: categoryFields.categoryParentName,
           note: note,
           date: formatDate(date),
           type: selectedSegment,
@@ -787,7 +881,11 @@ export default function AddTransactionScreen() {
           await setDoc(recurringRef, {
             userId: user.uid,
             amount: numericAmount,
-            category: category,
+            category: categoryFields.category,
+            categoryId: categoryFields.categoryId,
+            categoryName: categoryFields.categoryName,
+            categoryParentId: categoryFields.categoryParentId,
+            categoryParentName: categoryFields.categoryParentName,
             note: note,
             type: selectedSegment,
             frequency: recurring,
@@ -803,7 +901,11 @@ export default function AddTransactionScreen() {
         const savedTransaction: TransactionRecord = {
           id: transactionRef.id,
           amount: numericAmount,
-          category,
+          category: categoryFields.category,
+          categoryId: categoryFields.categoryId,
+          categoryName: categoryFields.categoryName,
+          categoryParentId: categoryFields.categoryParentId,
+          categoryParentName: categoryFields.categoryParentName,
           date: formatDate(date),
           note,
           recurring,
@@ -823,6 +925,9 @@ export default function AddTransactionScreen() {
 
       setAmount("");
       setCategory("");
+      setCategoryId("");
+      setCategoryParentId("");
+      setCategoryParentName("");
       setSelectedGoalId("");
       setNote("");
       setDate(new Date());
@@ -835,6 +940,10 @@ export default function AddTransactionScreen() {
       router.setParams({
         returnedType: "",
         returnedCategory: "",
+        returnedCategoryId: "",
+        returnedCategoryName: "",
+        returnedCategoryParentId: "",
+        returnedCategoryParentName: "",
         returnedAmount: "",
         returnedNote: "",
         returnedDate: "",
@@ -900,10 +1009,17 @@ export default function AddTransactionScreen() {
             onPress={() => {
               setSelectedSegment("Expense");
               setCategory("");
+              setCategoryId("");
+              setCategoryParentId("");
+              setCategoryParentName("");
               setSelectedGoalId("");
               router.setParams({
                 returnedType: "Expense",
                 returnedCategory: "",
+                returnedCategoryId: "",
+                returnedCategoryName: "",
+                returnedCategoryParentId: "",
+                returnedCategoryParentName: "",
                 returnedGoalId: "",
               });
             }}
@@ -926,10 +1042,17 @@ export default function AddTransactionScreen() {
             onPress={() => {
               setSelectedSegment("Income");
               setCategory("");
+              setCategoryId("");
+              setCategoryParentId("");
+              setCategoryParentName("");
               setSelectedGoalId("");
               router.setParams({
                 returnedType: "Income",
                 returnedCategory: "",
+                returnedCategoryId: "",
+                returnedCategoryName: "",
+                returnedCategoryParentId: "",
+                returnedCategoryParentName: "",
                 returnedGoalId: "",
               });
             }}
@@ -952,10 +1075,17 @@ export default function AddTransactionScreen() {
             onPress={() => {
               setSelectedSegment("Transfer");
               setCategory("");
+              setCategoryId("");
+              setCategoryParentId("");
+              setCategoryParentName("");
               setSelectedGoalId("");
               router.setParams({
                 returnedType: "Transfer",
                 returnedCategory: "",
+                returnedCategoryId: "",
+                returnedCategoryName: "",
+                returnedCategoryParentId: "",
+                returnedCategoryParentName: "",
                 returnedGoalId: "",
               });
             }}

@@ -27,6 +27,7 @@ type RecurringTransaction = {
   id: string;
   amount?: number | string;
   category?: string;
+  categoryName?: string;
   frequency?: string;
   isActive?: boolean;
   nextExecuteDate?: string;
@@ -122,7 +123,7 @@ export default function RecurringScreen() {
   const deleteRecurring = async (item: RecurringTransaction) => {
     const confirmed = await showConfirm({
       title: "Delete Recurring Transaction",
-      message: `Delete "${item.category || item.note || "Recurring transaction"}"? This will not remove transactions already created.`,
+      message: `Delete "${item.categoryName || item.category || item.note || "Recurring transaction"}"? This will not remove transactions already created.`,
       confirmLabel: "Delete",
       type: "error",
     });
@@ -186,7 +187,7 @@ export default function RecurringScreen() {
                   </View>
                   <View style={styles.cardText}>
                     <Text style={styles.categoryText} numberOfLines={1}>
-                      {item.category || "Uncategorized"}
+                      {item.categoryName || item.category || "Uncategorized"}
                     </Text>
                     <Text style={styles.noteText} numberOfLines={1}>
                       {item.note || item.frequency || "Recurring transaction"}

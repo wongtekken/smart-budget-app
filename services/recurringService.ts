@@ -14,6 +14,10 @@ type RecurringFrequency = "Daily" | "Weekly" | "Monthly" | "Yearly";
 type RecurringTransaction = {
   amount?: number | string;
   category?: string;
+  categoryId?: string | null;
+  categoryName?: string;
+  categoryParentId?: string | null;
+  categoryParentName?: string;
   frequency?: string;
   goalId?: string | null;
   isActive?: boolean;
@@ -120,6 +124,12 @@ export const processDueRecurringTransactions = async (userId: string) => {
             userId,
             amount: Number(recurring.amount) || 0,
             category: recurring.category || "",
+            categoryId: recurring.categoryId || null,
+            categoryName: recurring.categoryName || recurring.category || "",
+            categoryParentId: recurring.categoryParentId || null,
+            categoryParentName:
+              recurring.categoryParentName ||
+              String(recurring.categoryName || recurring.category || "").split(" - ")[0],
             note: recurring.note || "",
             type: recurring.type || "Expense",
             recurring: frequency,

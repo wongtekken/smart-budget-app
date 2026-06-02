@@ -56,6 +56,9 @@ const formatCompactCurrency = (value: number) => {
 const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Other";
 
+const getTransactionCategory = (tx: any) =>
+  tx.categoryName || tx.category || "Other";
+
 const isGoalCategoryName = (category?: string) =>
   getParentCategory(category).startsWith("🎯");
 
@@ -102,14 +105,15 @@ export default function AnalysisScreen() {
 
     transactions.forEach((tx) => {
       const txType = normalizeType(tx.type);
-      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+      const txCategory = getTransactionCategory(tx);
+      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(txCategory);
       const matchesTab =
         activeTab === "Transfer"
           ? txType === "transfer" || isLegacyGoalExpense
           : tx.type === activeTab && !isLegacyGoalExpense;
 
       if (matchesTab) {
-        const parentCategory = getParentCategory(tx.category);
+        const parentCategory = getParentCategory(txCategory);
         const amt = Number(tx.amount) || 0;
         groupedData[parentCategory] = (groupedData[parentCategory] || 0) + amt;
         totalAmount += amt;
@@ -154,7 +158,8 @@ export default function AnalysisScreen() {
 
     const currentMonthTx = transactions.filter((tx) => {
       const txType = normalizeType(tx.type);
-      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+      const isLegacyGoalExpense =
+        txType === "expense" && isGoalCategoryName(getTransactionCategory(tx));
       return activeTab === "Transfer"
         ? txType === "transfer" || isLegacyGoalExpense
         : tx.type === activeTab && !isLegacyGoalExpense;
@@ -179,7 +184,8 @@ export default function AnalysisScreen() {
     transactions.forEach((tx) => {
       const amt = Number(tx.amount) || 0;
       const txType = normalizeType(tx.type);
-      const isLegacyGoalExpense = txType === "expense" && isGoalCategoryName(tx.category);
+      const isLegacyGoalExpense =
+        txType === "expense" && isGoalCategoryName(getTransactionCategory(tx));
 
       if (txType === "income") totalInc += amt;
       if (txType === "expense" && !isLegacyGoalExpense) totalExp += amt;
@@ -556,7 +562,7 @@ export default function AnalysisScreen() {
                       />
                     </View>
                     <View>
-                      <Text style={styles.txCategory}>{tx.category}</Text>
+                      <Text style={styles.txCategory}>{getTransactionCategory(tx)}</Text>
                       <Text style={styles.txDate}>{tx.date}</Text>
                     </View>
                   </View>

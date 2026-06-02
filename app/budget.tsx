@@ -26,6 +26,10 @@ import { AppHeader } from "../components/app-header";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
+import {
+  getAllocationAmount,
+  getParentCategoryKey,
+} from "../services/categoryData";
 
 const getLocalMonthStr = () => {
   const now = new Date();
@@ -47,6 +51,7 @@ const isGoalCategory = (category: any) =>
 
 type TemplateAllocation = {
   category?: string;
+  categoryId?: string;
   mode?: "Fixed" | "Percentage";
   value?: number | string;
 };
@@ -71,11 +76,13 @@ export default function BudgetScreen() {
   // 🚨 手动修改预算的弹窗状态 (Edit)
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
   const [editAmount, setEditAmount] = useState("");
 
   // 🚨 新增：主动添加分类预算的弹窗状态 (Add)
   const [isAddModalVisible, setAddModalVisible] = useState(false);
   const [addCategoryName, setAddCategoryName] = useState("");
+  const [addCategoryId, setAddCategoryId] = useState("");
   const [addAmount, setAddAmount] = useState("");
 
   // ==========================================
@@ -116,16 +123,17 @@ export default function BudgetScreen() {
         const tx = doc.data();
         const amount = Number(tx.amount) || 0;
         const txDate = tx.date || "1970-01-01";
-        const parentCatName = tx.category
-          ? tx.category.split(" - ")[0]
-          : "Uncategorized";
+        const parentCatName = tx.categoryParentName || (tx.categoryName || tx.category
+          ? String(tx.categoryName || tx.category).split(" - ")[0]
+          : "Uncategorized");
+        const parentCategoryKey = getParentCategoryKey(tx, expenseCategories);
         const isLegacyGoalExpense = tx.type === "Expense" && isGoalCategoryName(parentCatName);
 
         if (txDate >= startOfThisMonth && txDate <= endOfThisMonth) {
           if (tx.type === "Income") currIncome += amount;
           else if (tx.type === "Expense" && !isLegacyGoalExpense) {
-            if (!expensesCalc[parentCatName]) expensesCalc[parentCatName] = 0;
-            expensesCalc[parentCatName] += amount;
+            if (!expensesCalc[parentCategoryKey]) expensesCalc[parentCategoryKey] = 0;
+            expensesCalc[parentCategoryKey] += amount;
           }
         }
       });
@@ -134,7 +142,7 @@ export default function BudgetScreen() {
       setTransactionsLoaded(true);
     });
     return () => unsubscribe();
-  }, [currentMonthStr]);
+  }, [currentMonthStr, expenseCategories]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -177,23 +185,27 @@ export default function BudgetScreen() {
     () => new Set(parentCategories.map((cat) => cat.name)),
     [parentCategories],
   );
+  const activeCategoryKeys = useMemo(
+    () => new Set(parentCategories.map((cat) => cat.id)),
+    [parentCategories],
+  );
   const goalCategoryNames = useMemo(
     () => new Set(goalCategories.map((cat) => cat.name)),
     [goalCategories],
   );
-  const activeAllocations = categoriesLoaded
+  const goalCategoryKeys = useMemo(
+    () => new Set(goalCategories.map((cat) => cat.id)),
+    [goalCategories],
+  );
+  const activeAllocations: Record<string, number> = categoriesLoaded
     ? Object.fromEntries(
-        Object.entries(allocations).filter(([category]) =>
-          activeCategoryNames.has(category),
-        ),
-      )
+        parentCategories.map((cat) => [cat.id, getAllocationAmount(allocations, cat)]),
+      ) as Record<string, number>
     : allocations;
-  const goalAllocations = categoriesLoaded
+  const goalAllocations: Record<string, number> = categoriesLoaded
     ? Object.fromEntries(
-        Object.entries(allocations).filter(([category]) =>
-          goalCategoryNames.has(category),
-        ),
-      )
+        goalCategories.map((cat) => [cat.id, getAllocationAmount(allocations, cat)]),
+      ) as Record<string, number>
     : {};
 
   const totalAllocated = Object.values(activeAllocations).reduce(
@@ -206,7 +218,7 @@ export default function BudgetScreen() {
   const activeExpensesByCategory = categoriesLoaded
     ? Object.fromEntries(
         Object.entries(expensesByCategory).filter(([category]) =>
-          activeCategoryNames.has(category),
+          activeCategoryKeys.has(category) || activeCategoryNames.has(category),
         ),
       )
     : expensesByCategory;
@@ -214,26 +226,29 @@ export default function BudgetScreen() {
     ? Object.entries(expensesByCategory)
         .filter(
           ([category]) =>
-            !activeCategoryNames.has(category) && !goalCategoryNames.has(category),
+            !activeCategoryNames.has(category) &&
+            !goalCategoryNames.has(category) &&
+            !activeCategoryKeys.has(category) &&
+            !goalCategoryKeys.has(category),
         )
         .reduce((sum, [, amount]) => sum + amount, 0)
     : 0;
 
   const activeCategories = parentCategories.filter(
     (cat) =>
-      (activeAllocations[cat.name] || 0) > 0 ||
-      (activeExpensesByCategory[cat.name] || 0) > 0,
+      (activeAllocations[cat.id] || 0) > 0 ||
+      (activeExpensesByCategory[cat.id] || activeExpensesByCategory[cat.name] || 0) > 0,
   );
 
   const addableCategories = parentCategories.filter(
-    (cat) => (activeAllocations[cat.name] || 0) <= 0,
+    (cat) => (activeAllocations[cat.id] || 0) <= 0,
   );
   const addableGoalCategories = goalCategories.filter(
-    (cat) => (goalAllocations[cat.name] || 0) <= 0,
+    (cat) => (goalAllocations[cat.id] || 0) <= 0,
   );
   const addableBudgetCategories = [...addableCategories, ...addableGoalCategories];
   const plannedGoalCategories = goalCategories.filter(
-    (cat) => (goalAllocations[cat.name] || 0) > 0,
+    (cat) => (goalAllocations[cat.id] || 0) > 0,
   );
 
   // ==========================================
@@ -258,14 +273,17 @@ export default function BudgetScreen() {
             .map((item) => ({
               ...item,
               category: String(item.category || "").trim(),
+              categoryId: String(item.categoryId || "").trim(),
               value: Number(item.value) || 0,
             }))
             .filter((item) => item.category);
           const fixedTotal = activeTemplateItems
-            .filter(
-              (item) =>
-                item.mode === "Fixed" && activeCategoryNames.has(item.category),
-            )
+            .filter((item) => {
+              const matchedCategory = parentCategories.find(
+                (cat) => cat.id === item.categoryId || cat.name === item.category,
+              );
+              return item.mode === "Fixed" && Boolean(matchedCategory);
+            })
             .reduce((sum, item) => sum + item.value, 0);
 
           if (hasPercentageAllocation && totalAvailable <= 0) {
@@ -295,18 +313,22 @@ export default function BudgetScreen() {
 
           activeTemplateItems.forEach((item) => {
             const { category } = item;
+            const matchedCategory = parentCategories.find(
+              (cat) => cat.id === item.categoryId || cat.name === category,
+            );
+            const categoryKey = matchedCategory?.id || "";
 
-            if (!activeCategoryNames.has(category)) {
+            if (!categoryKey) {
               skippedCategories.push(category);
               return;
             }
 
             if (item.mode === "Fixed") {
-              newAllocations[category] = item.value;
+              newAllocations[categoryKey] = item.value;
             } else if (item.mode === "Percentage") {
               // 自动规整小数位，避免金额变成 19.99999
               const calculated = (item.value / 100) * remainingAfterFixed;
-              newAllocations[category] = Number(calculated.toFixed(2));
+              newAllocations[categoryKey] = Number(calculated.toFixed(2));
             }
           });
 
@@ -352,6 +374,7 @@ export default function BudgetScreen() {
     }
   }, [
     activeCategoryNames,
+    parentCategories,
     budgetLoaded,
     categoriesLoaded,
     currentMonthStr,
@@ -364,10 +387,11 @@ export default function BudgetScreen() {
 
   const handleSaveSingleBudget = async () => {
     const user = auth.currentUser;
-    if (!user || !editCategoryName) return;
+    if (!user || !editCategoryId) return;
 
     const newAmount = Number(editAmount) || 0;
-    const newAllocations = { ...allocations, [editCategoryName]: newAmount };
+    const newAllocations = { ...allocations, [editCategoryId]: newAmount };
+    delete newAllocations[editCategoryName];
 
     try {
       const budgetDocId = `${user.uid}_${currentMonthStr}`;
@@ -392,7 +416,7 @@ export default function BudgetScreen() {
 
   // 🚨 新增：把闲置分类添加进预算
   const handleSaveNewBudget = async () => {
-    if (!addCategoryName) {
+    if (!addCategoryName || !addCategoryId) {
       showDialog({
         title: "Oops",
         message: "Please select a category.",
@@ -413,7 +437,8 @@ export default function BudgetScreen() {
     if (!user) return;
 
     const newAmount = Number(addAmount) || 0;
-    const newAllocations = { ...allocations, [addCategoryName]: newAmount };
+    const newAllocations = { ...allocations, [addCategoryId]: newAmount };
+    delete newAllocations[addCategoryName];
 
     try {
       const budgetDocId = `${user.uid}_${currentMonthStr}`;
@@ -428,6 +453,7 @@ export default function BudgetScreen() {
       );
 
       setAddCategoryName("");
+      setAddCategoryId("");
       setAddAmount("");
       setAddModalVisible(false);
     } catch {
@@ -439,7 +465,8 @@ export default function BudgetScreen() {
     }
   };
 
-  const openEditModal = (categoryName: string, currentAllocated: number) => {
+  const openEditModal = (categoryId: string, categoryName: string, currentAllocated: number) => {
+    setEditCategoryId(categoryId);
     setEditCategoryName(categoryName);
     setEditAmount(currentAllocated > 0 ? currentAllocated.toString() : "");
     setEditModalVisible(true);
@@ -562,8 +589,8 @@ export default function BudgetScreen() {
 
           {/* 🚨 循环渲染活跃分类 */}
           {activeCategories.map((cat) => {
-            const spent = activeExpensesByCategory[cat.name] || 0;
-            const allocated = activeAllocations[cat.name] || 0;
+            const spent = activeExpensesByCategory[cat.id] || activeExpensesByCategory[cat.name] || 0;
+            const allocated = activeAllocations[cat.id] || 0;
 
             // 🚨 UI 劫持：判断这是否是目标存钱罐分类
             const isGoalCategory =
@@ -579,7 +606,7 @@ export default function BudgetScreen() {
               <TouchableOpacity
                 key={cat.id}
                 style={styles.budgetItem}
-                onPress={() => openEditModal(cat.name, allocated)}
+                onPress={() => openEditModal(cat.id, cat.name, allocated)}
               >
                 <View style={styles.itemTextRow}>
                   <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
@@ -676,13 +703,13 @@ export default function BudgetScreen() {
             <View style={styles.plannedGoalSection}>
               <Text style={styles.plannedGoalTitle}>Planned Goal Savings</Text>
               {plannedGoalCategories.map((cat) => {
-                const allocated = goalAllocations[cat.name] || 0;
+                const allocated = goalAllocations[cat.id] || 0;
 
                 return (
                   <TouchableOpacity
                     key={cat.id}
                     style={styles.budgetItem}
-                    onPress={() => openEditModal(cat.name, allocated)}
+                    onPress={() => openEditModal(cat.id, cat.name, allocated)}
                   >
                     <View style={styles.itemTextRow}>
                       <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
@@ -837,14 +864,17 @@ export default function BudgetScreen() {
                     key={cat.id}
                     style={[
                       styles.chip,
-                      addCategoryName === cat.name && styles.chipSelected,
+                      addCategoryId === cat.id && styles.chipSelected,
                     ]}
-                    onPress={() => setAddCategoryName(cat.name)}
+                    onPress={() => {
+                      setAddCategoryId(cat.id);
+                      setAddCategoryName(cat.name);
+                    }}
                   >
                     <Text
                       style={[
                         styles.chipText,
-                        addCategoryName === cat.name && styles.chipTextSelected,
+                        addCategoryId === cat.id && styles.chipTextSelected,
                       ]}
                     >
                       {cat.name}

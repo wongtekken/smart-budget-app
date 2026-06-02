@@ -37,8 +37,13 @@ import {
   UnusedBudgetOpportunity,
 } from "../../services/financialIntelligence";
 import { useAppDialog } from "../../components/app-dialog";
+import {
+  allocationsByCategoryName,
+  getAllocationAmount,
+} from "../../services/categoryData";
 
 type ExpenseCategoryRecord = {
+  goalId?: string;
   id: string;
   isGoal?: boolean;
   name?: string;
@@ -168,7 +173,6 @@ export default function AiCoachScreen() {
     const categoryQuery = query(
       collection(db, "categories"),
       where("userId", "==", user.uid),
-      where("type", "==", "Expense"),
     );
     const goalQuery = query(collection(db, "goals"), where("userId", "==", user.uid));
     const recurringQuery = query(
@@ -213,9 +217,23 @@ export default function AiCoachScreen() {
     };
   }, []);
 
-  const currentAllocations = useMemo(
+  const currentRawAllocations = useMemo(
     () => budgets.find((budget) => budget.month === currentMonth)?.allocations || {},
     [budgets, currentMonth],
+  );
+
+  const currentAllocations = useMemo(
+    () => allocationsByCategoryName(currentRawAllocations, expenseCategories),
+    [currentRawAllocations, expenseCategories],
+  );
+
+  const normalizedBudgets = useMemo(
+    () =>
+      budgets.map((budget) => ({
+        ...budget,
+        allocations: allocationsByCategoryName(budget.allocations, expenseCategories),
+      })),
+    [budgets, expenseCategories],
   );
 
   const activeExpenseCategories = useMemo(
@@ -225,6 +243,7 @@ export default function AiCoachScreen() {
           (category) =>
             !category.parentId &&
             category.name &&
+            category.type === "Expense" &&
             !category.isGoal &&
             !category.name.startsWith("🎯"),
         )
@@ -237,7 +256,7 @@ export default function AiCoachScreen() {
       buildFinancialIntelligence({
         activeExpenseCategories:
           activeExpenseCategories.length > 0 ? activeExpenseCategories : undefined,
-        budgets,
+        budgets: normalizedBudgets,
         currentAllocations,
         goals,
         recurring: recurringTransactions,
@@ -245,7 +264,7 @@ export default function AiCoachScreen() {
       }),
     [
       activeExpenseCategories,
-      budgets,
+      normalizedBudgets,
       currentAllocations,
       goals,
       recurringTransactions,
@@ -277,6 +296,28 @@ export default function AiCoachScreen() {
     0,
   );
   const goalCategoryName = goals[0]?.title ? `\uD83C\uDFAF ${goals[0].title}` : "";
+  const goalCategory = expenseCategories.find(
+    (category) =>
+      !category.parentId &&
+      (category.goalId === goals[0]?.id || category.name === goalCategoryName),
+  );
+  const goalCategoryKey = goalCategory?.id || goalCategoryName;
+  const getBudgetCategoryKey = (categoryName: string) =>
+    expenseCategories.find(
+      (category) =>
+        !category.parentId &&
+        category.name?.trim().toLowerCase() === categoryName.trim().toLowerCase(),
+    )?.id || categoryName;
+  const setBudgetAllocation = (
+    baseAllocations: Record<string, number>,
+    categoryName: string,
+    amount: number,
+  ) => {
+    const key = getBudgetCategoryKey(categoryName);
+    const nextAllocations = { ...baseAllocations, [key]: Number(amount.toFixed(2)) };
+    delete nextAllocations[categoryName];
+    return nextAllocations;
+  };
   const primaryAction =
     coachResponse?.recommendations[0] ||
     coachCards[0]?.description ||
@@ -398,11 +439,16 @@ export default function AiCoachScreen() {
 
     setTransferInProgress(true);
     try {
-      const nextAllocations = {
-        ...currentAllocations,
-        [transfer.fromCategory]: Number(Math.max(sourceAllocated - amount, 0).toFixed(2)),
-        [transfer.toCategory]: Number((targetAllocated + amount).toFixed(2)),
-      };
+      let nextAllocations = setBudgetAllocation(
+        currentRawAllocations,
+        transfer.fromCategory,
+        Math.max(sourceAllocated - amount, 0),
+      );
+      nextAllocations = setBudgetAllocation(
+        nextAllocations,
+        transfer.toCategory,
+        targetAllocated + amount,
+      );
 
       await setDoc(
         doc(db, "monthly_budgets", `${user.uid}_${currentMonth}`),
@@ -465,16 +511,25 @@ export default function AiCoachScreen() {
         : {};
       const nextAllocations = nextBudgetData.allocations || {};
       const nextRolloverIncome = Number(nextBudgetData.rolloverIncome) || 0;
+      const categoryKey = getBudgetCategoryKey(category);
+      const nextCategoryAmount = Number(
+        (getAllocationAmount(nextAllocations, {
+          id: categoryKey,
+          name: category,
+        }) + amount).toFixed(2),
+      );
+      const normalizedNextAllocations = {
+        ...nextAllocations,
+        [categoryKey]: nextCategoryAmount,
+      };
+      delete normalizedNextAllocations[category];
 
       await setDoc(
         nextBudgetRef,
         {
           userId: user.uid,
           month: nextMonth,
-          allocations: {
-            ...nextAllocations,
-            [category]: Number((Number(nextAllocations[category] || 0) + amount).toFixed(2)),
-          },
+          allocations: normalizedNextAllocations,
           rolloverIncome: Number((nextRolloverIncome + amount).toFixed(2)),
         },
         { merge: true },
@@ -595,14 +650,17 @@ export default function AiCoachScreen() {
 
     setSavingActionInProgress(true);
     try {
-      const nextAllocations = {
-        ...currentAllocations,
-        [category]: Number(Math.max(currentAllocated - amount, currentSpent).toFixed(2)),
-      };
+      let nextAllocations = setBudgetAllocation(
+        currentRawAllocations,
+        category,
+        Math.max(currentAllocated - amount, currentSpent),
+      );
 
       if (mode === "goal") {
-        nextAllocations[goalCategoryName] = Number(
-          (Number(nextAllocations[goalCategoryName] || 0) + amount).toFixed(2),
+        nextAllocations = setBudgetAllocation(
+          nextAllocations,
+          goalCategoryName,
+          Number(currentAllocations[goalCategoryName] || currentAllocations[goalCategoryKey] || 0) + amount,
         );
       }
 

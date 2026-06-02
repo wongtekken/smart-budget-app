@@ -2,6 +2,10 @@ export type TransactionRecord = {
   id?: string;
   amount?: number | string;
   category?: string;
+  categoryId?: string | null;
+  categoryName?: string;
+  categoryParentId?: string | null;
+  categoryParentName?: string;
   date?: string;
   goalId?: string | null;
   note?: string;
@@ -27,6 +31,7 @@ export type GoalRecord = {
 export type RecurringRecord = {
   amount?: number | string;
   category?: string;
+  categoryName?: string;
   frequency?: string;
   isActive?: boolean;
   type?: string;
@@ -103,6 +108,9 @@ const normalizeType = (type?: string) => String(type || "").toLowerCase();
 const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Uncategorized";
 
+const getTransactionCategory = (transaction: TransactionRecord | RecurringRecord) =>
+  transaction.categoryName || transaction.category || "Uncategorized";
+
 const isGoalCategoryName = (category?: string) => getParentCategory(category).startsWith("🎯");
 
 const getAmount = (value?: number | string) => Number(value) || 0;
@@ -178,7 +186,7 @@ const standardDeviation = (values: number[]) => {
 
 const getExpenseTransactions = (transactions: TransactionRecord[]) =>
   transactions.filter(
-    (tx) => normalizeType(tx.type) === "expense" && !isGoalCategoryName(tx.category),
+    (tx) => normalizeType(tx.type) === "expense" && !isGoalCategoryName(getTransactionCategory(tx)),
   );
 
 const getSpendByCategoryForMonth = (transactions: TransactionRecord[], month: string) => {
@@ -186,7 +194,7 @@ const getSpendByCategoryForMonth = (transactions: TransactionRecord[], month: st
 
   getExpenseTransactions(transactions).forEach((tx) => {
     if (!String(tx.date || "").startsWith(month)) return;
-    const category = getParentCategory(tx.category);
+    const category = getParentCategory(getTransactionCategory(tx));
     byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
   });
 
@@ -198,7 +206,7 @@ const getTotalForMonth = (transactions: TransactionRecord[], month: string, type
     if (!String(tx.date || "").startsWith(month) || normalizeType(tx.type) !== type) {
       return sum;
     }
-    if (type === "expense" && isGoalCategoryName(tx.category)) {
+    if (type === "expense" && isGoalCategoryName(getTransactionCategory(tx))) {
       return sum;
     }
 
@@ -222,7 +230,7 @@ const getLastDaysSpendByCategory = (
       return;
     }
 
-    const category = getParentCategory(tx.category);
+    const category = getParentCategory(getTransactionCategory(tx));
     byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
   });
 
@@ -245,7 +253,7 @@ const getPriorDaysSpendByCategory = (
       return;
     }
 
-    const category = getParentCategory(tx.category);
+    const category = getParentCategory(getTransactionCategory(tx));
     byCategory[category] = (byCategory[category] || 0) + getAmount(tx.amount);
   });
 
@@ -326,7 +334,7 @@ const createWeekendPatterns = (
   getExpenseTransactions(transactions).forEach((tx) => {
     const parsed = parseDate(tx.date);
     if (!parsed) return;
-    const category = getParentCategory(tx.category);
+    const category = getParentCategory(getTransactionCategory(tx));
     if (!isActiveCategory(category, activeCategorySet)) return;
 
     const day = parsed.getDay();
@@ -628,7 +636,7 @@ const createSavingOpportunities = (
   const recurringCategories = new Set(
     recurring
       .filter((item) => item.isActive !== false && normalizeType(item.type) === "expense")
-      .map((item) => getParentCategory(item.category)),
+      .map((item) => getParentCategory(getTransactionCategory(item))),
   );
 
   return Object.keys(currentSpendByCategory)
@@ -708,9 +716,9 @@ export const createReactiveBudgetAlert = (
   currentAllocations: Record<string, number>,
 ) => {
   if (normalizeType(transaction.type) !== "expense") return null;
-  if (isGoalCategoryName(transaction.category)) return null;
+  if (isGoalCategoryName(getTransactionCategory(transaction))) return null;
 
-  const category = getParentCategory(transaction.category);
+  const category = getParentCategory(getTransactionCategory(transaction));
   const txMonth = String(transaction.date || getLocalDateStr()).slice(0, 7);
   const spent = getSpendByCategoryForMonth(transactions, txMonth)[category] || 0;
   const allocated = Number(currentAllocations[category] || 0);

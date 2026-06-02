@@ -22,11 +22,19 @@ import {
 import { AppHeader } from "../../components/app-header";
 import { formatCurrency, palette, radius, shadow, spacing } from "../../constants/ui";
 import { auth, db } from "../../firebaseConfig";
+import {
+  getAllocationAmount,
+  getParentCategoryKey,
+} from "../../services/categoryData";
 
 type Transaction = {
   id: string;
   amount?: number | string;
   category?: string;
+  categoryId?: string | null;
+  categoryName?: string;
+  categoryParentId?: string | null;
+  categoryParentName?: string;
   createdAt?: { toMillis?: () => number };
   date?: string;
   note?: string;
@@ -219,12 +227,24 @@ export default function DashboardScreen() {
     const activeCategoryNames = new Set(
       parentExpenseCategories.map((category) => category.name as string),
     );
+    const activeCategoryKeys = new Set(parentExpenseCategories.map((category) => category.id));
     const goalCategoryNames = new Set(
       expenseCategories
         .filter((category) => !category.parentId && category.name && isGoalCategory(category))
         .map((category) => category.name as string),
     );
+    const goalCategoryKeys = new Set(
+      expenseCategories
+        .filter((category) => !category.parentId && category.name && isGoalCategory(category))
+        .map((category) => category.id),
+    );
     const shouldFilterCategories = categoriesLoaded;
+    const allocationByCategoryKey = Object.fromEntries(
+      parentExpenseCategories.map((category) => [
+        category.id,
+        getAllocationAmount(allocations, category),
+      ]),
+    );
 
     transactions.forEach((tx) => {
       const amount = Number(tx.amount) || 0;
@@ -235,21 +255,27 @@ export default function DashboardScreen() {
       }
 
       if (type === "expense") {
-        const parentCategory = tx.category ? tx.category.split(" - ")[0] : "Uncategorized";
-        if (goalCategoryNames.has(parentCategory)) return;
+        const parentCategoryName = tx.categoryParentName || (tx.categoryName || tx.category
+          ? String(tx.categoryName || tx.category).split(" - ")[0]
+          : "Uncategorized");
+        const parentCategoryKey = getParentCategoryKey(tx, expenseCategories);
+        if (goalCategoryNames.has(parentCategoryName) || goalCategoryKeys.has(parentCategoryKey)) return;
         expenses += amount;
-        if (shouldFilterCategories && !activeCategoryNames.has(parentCategory)) {
+        if (
+          shouldFilterCategories &&
+          !activeCategoryNames.has(parentCategoryName) &&
+          !activeCategoryKeys.has(parentCategoryKey)
+        ) {
           inactiveCategorySpend += amount;
         } else {
-          spentByCategory[parentCategory] = (spentByCategory[parentCategory] || 0) + amount;
+          spentByCategory[parentCategoryKey] =
+            (spentByCategory[parentCategoryKey] || 0) + amount;
         }
       }
     });
 
     const visibleAllocations = shouldFilterCategories
-      ? Object.fromEntries(
-          Object.entries(allocations).filter(([category]) => activeCategoryNames.has(category)),
-        )
+      ? allocationByCategoryKey
       : allocations;
     const allocated = Object.values(visibleAllocations).reduce(
       (sum, value) => sum + Number(value || 0),
@@ -260,19 +286,20 @@ export default function DashboardScreen() {
 
     const monthProgress = getMonthProgress(currentMonth);
     const budgetExpectedUsage = allocated > 0 ? Math.min(monthProgress + 0.08, 1) : 0;
-    const categoryStats = Object.keys({ ...visibleAllocations, ...spentByCategory })
-      .map((name) => {
-        const allocatedAmount = Number(visibleAllocations[name] || 0);
-        const spent = spentByCategory[name] || 0;
+    const categoryStats = parentExpenseCategories
+      .map((category) => {
+        const allocatedAmount = Number(visibleAllocations[category.id] || 0);
+        const spent = spentByCategory[category.id] || spentByCategory[category.name || ""] || 0;
         const progress = allocatedAmount > 0 ? spent / allocatedAmount : spent > 0 ? 1 : 0;
 
         return {
-          name,
+          name: category.name || "Uncategorized",
           allocated: allocatedAmount,
           spent,
           progress,
         };
       })
+      .filter((item) => item.allocated > 0 || item.spent > 0)
       .sort((a, b) => b.progress - a.progress);
     const budgetedCategoryCount = categoryStats.filter((item) => item.allocated > 0).length;
     const overBudgetCategoryCount = categoryStats.filter(
@@ -499,7 +526,7 @@ export default function DashboardScreen() {
                         </View>
                         <View style={styles.transactionText}>
                           <Text style={styles.transactionTitle} numberOfLines={1}>
-                            {tx.category || tx.note || "Uncategorized"}
+                            {tx.categoryName || tx.category || tx.note || "Uncategorized"}
                           </Text>
                           <Text style={styles.transactionDate}>{tx.date || "No date"}</Text>
                         </View>
