@@ -28,6 +28,7 @@ import {
   ActivityIndicator, // 🚨 新增：用于显示 AI 解析时的 Loading 圈
   Animated,
   Easing,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -37,6 +38,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "../../components/app-header";
 import { useAppDialog } from "../../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../../constants/ui";
@@ -85,6 +87,8 @@ const InputField = ({ label, children }: InputFieldProps) => (
 export default function AddTransactionScreen() {
   const router = useRouter();
   const { showDialog } = useAppDialog();
+  const insets = useSafeAreaInsets();
+  const bottomActionOffset = Math.max(insets.bottom + 88, 112);
   const appAlert = (title: string, message = "") => {
     const lowerTitle = title.toLowerCase();
     const type: "error" | "info" | "success" | "warning" = lowerTitle.includes(
@@ -876,16 +880,15 @@ export default function AddTransactionScreen() {
   return (
     <View style={styles.container}>
       <AppHeader
-        rightAction={{
-          accessibilityLabel: "Transaction options",
-          icon: "options-outline",
-        }}
-        showBack
+        showBack={Boolean(editId)}
         title={editId ? "Edit Transaction" : "Add Transaction"}
       />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomActionOffset + 96 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.segmentedControl}>
@@ -1090,7 +1093,7 @@ export default function AddTransactionScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.bottomActions}>
+      <View style={[styles.bottomActions, { bottom: bottomActionOffset }]}>
         <View style={styles.floatingButtons}>
           <TouchableOpacity
             style={styles.fabSmall}
@@ -1220,7 +1223,10 @@ export default function AddTransactionScreen() {
         animationType="fade"
         onRequestClose={handleCancelVoiceRecording}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.recordingModalContent}>
             <View style={styles.recordingIconWrap}>
               {!isVoiceAnalyzing && (
@@ -1290,7 +1296,7 @@ export default function AddTransactionScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1298,7 +1304,10 @@ export default function AddTransactionScreen() {
         transparent={true}
         animationType="slide"
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.voiceModalContent}>
             <Text style={styles.voiceModalTitle}>Voice Expense Entry</Text>
             <Text style={styles.voiceModalSubtitle}>
@@ -1338,7 +1347,7 @@ export default function AddTransactionScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Date Pickers */}
@@ -1430,7 +1439,6 @@ const styles = StyleSheet.create({
   },
   bottomActions: {
     position: "absolute",
-    bottom: 115,
     left: 20,
     right: 20,
     flexDirection: "row",

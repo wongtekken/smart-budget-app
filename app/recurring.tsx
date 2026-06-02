@@ -193,6 +193,7 @@ export default function RecurringScreen() {
                     </Text>
                   </View>
                   <Text
+                    numberOfLines={1}
                     style={[
                       styles.amountText,
                       {
@@ -353,7 +354,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 3,
   },
-  amountText: { fontSize: 15, fontWeight: "900", marginLeft: 8 },
+  amountText: {
+    flexShrink: 0,
+    fontSize: 15,
+    fontWeight: "900",
+    marginLeft: 8,
+    maxWidth: "38%",
+    textAlign: "right",
+  },
   metaRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 14 },
   metaPill: {
     alignItems: "center",

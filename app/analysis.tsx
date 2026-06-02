@@ -234,14 +234,7 @@ export default function AnalysisScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <AppHeader
-        rightAction={{
-          accessibilityLabel: "Analysis options",
-          icon: "options-outline",
-        }}
-        showBack
-        title="Financial Analysis"
-      />
+      <AppHeader title="Financial Analysis" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

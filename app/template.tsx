@@ -2,7 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -342,25 +344,34 @@ export default function TemplateScreen() {
               onLongPress={() => handleLongPress(template)}
             >
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{template.name}</Text>
-                {template.isDefault && (
-                  <View style={styles.defaultBadge}>
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={13}
-                      color={palette.primary}
-                    />
-                    <Text style={styles.defaultBadgeText}>Default</Text>
-                  </View>
-                )}
+                <Text style={styles.cardTitle} numberOfLines={1}>{template.name}</Text>
+                <View style={styles.cardHeaderActions}>
+                  {template.isDefault && (
+                    <View style={styles.defaultBadge}>
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={13}
+                        color={palette.primary}
+                      />
+                      <Text style={styles.defaultBadgeText}>Default</Text>
+                    </View>
+                  )}
+                  {!template.isDefault && (
+                    <TouchableOpacity
+                      hitSlop={8}
+                      onPress={() => handleLongPress(template)}
+                      style={styles.moreButton}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
               <View style={styles.divider} />
               {template.allocations.map((item, index) => (
                 <View key={index} style={styles.allocationRow}>
                   <View style={styles.textRow}>
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
+                    <View style={styles.allocationNameGroup}>
                       <View
                         style={[
                           styles.modeBadge,
@@ -382,9 +393,10 @@ export default function TemplateScreen() {
                           {item.mode === "Fixed" ? "FIXED" : "%"}
                         </Text>
                       </View>
-                      <Text style={styles.categoryText}>{item.category}</Text>
+                      <Text style={styles.categoryText} numberOfLines={1}>{item.category}</Text>
                     </View>
                     <Text
+                      numberOfLines={1}
                       style={[
                         styles.valueText,
                         {
@@ -484,7 +496,10 @@ export default function TemplateScreen() {
 
       {/* 🚨 Builder Modal */}
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalHeaderTitle}>
               {editingTemplateId ? "Edit Template" : "New Template"}
@@ -500,7 +515,7 @@ export default function TemplateScreen() {
             <ScrollView style={{ maxHeight: 300, marginBottom: 15 }}>
               {draftAllocations.map((draft, index) => (
                 <View key={index} style={styles.draftItem}>
-                  <Text style={styles.draftCatName}>{draft.category}</Text>
+                  <Text style={styles.draftCatName} numberOfLines={1}>{draft.category}</Text>
                   <View style={styles.draftControls}>
                     <TouchableOpacity
                       style={[
@@ -620,7 +635,7 @@ export default function TemplateScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -690,6 +705,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginRight: 10,
   },
+  cardHeaderActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 0,
+  },
   defaultBadge: {
     alignItems: "center",
     backgroundColor: palette.primarySoft,
@@ -706,12 +726,26 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginLeft: 4,
   },
+  moreButton: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    marginLeft: 8,
+    width: 32,
+  },
   divider: { height: 1, backgroundColor: palette.border, marginBottom: 15 },
   allocationRow: { marginBottom: 15 },
   textRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  allocationNameGroup: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: 10,
+    minWidth: 0,
   },
   modeBadge: {
     paddingHorizontal: 8,
@@ -720,8 +754,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   modeText: { fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
-  categoryText: { fontSize: 16, fontWeight: "bold", color: palette.text },
-  valueText: { fontSize: 16, fontWeight: "900" },
+  categoryText: { flex: 1, fontSize: 16, fontWeight: "bold", color: palette.text },
+  valueText: {
+    flexShrink: 0,
+    fontSize: 16,
+    fontWeight: "900",
+    maxWidth: "35%",
+    textAlign: "right",
+  },
   applyBtn: {
     flexDirection: "row",
     marginTop: 10,
@@ -801,8 +841,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginBottom: 10,
   },
-  draftCatName: { fontSize: 16, fontWeight: "bold", color: palette.text, flex: 1 },
-  draftControls: { flexDirection: "row", alignItems: "center" },
+  draftCatName: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "bold",
+    marginRight: 10,
+    minWidth: 0,
+  },
+  draftControls: { alignItems: "center", flexDirection: "row", flexShrink: 0 },
   draftModeBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,

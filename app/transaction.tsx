@@ -203,14 +203,7 @@ export default function TransactionsScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <AppHeader
-        rightAction={{
-          accessibilityLabel: "Transaction options",
-          icon: "options-outline",
-        }}
-        showBack
-        title="Transactions"
-      />
+      <AppHeader showBack title="Transactions" />
 
       <View style={styles.content}>
         <View style={styles.monthNavigator}>
@@ -296,10 +289,8 @@ export default function TransactionsScreen() {
                         index === group.data.length - 1 && styles.lastItem,
                       ]}
                     >
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
-                        <Text style={styles.itemName}>
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemName} numberOfLines={1}>
                           {item.category || item.note || "Uncategorized"}
                         </Text>
                         {item.recurring && item.recurring !== "Never" && (
@@ -312,15 +303,25 @@ export default function TransactionsScreen() {
                         )}
                       </View>
 
-                      <Text
-                        style={[
-                          styles.itemAmount,
-                          { color: getAmountColor(item.type) },
-                        ]}
-                      >
-                        {getAmountPrefix(item.type)}RM{" "}
-                        {Number(item.amount).toFixed(2)}
-                      </Text>
+                      <View style={styles.itemRight}>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.itemAmount,
+                            { color: getAmountColor(item.type) },
+                          ]}
+                        >
+                          {getAmountPrefix(item.type)}RM{" "}
+                          {Number(item.amount).toFixed(2)}
+                        </Text>
+                        <TouchableOpacity
+                          hitSlop={8}
+                          onPress={() => openActionMenu(item)}
+                          style={styles.moreButton}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                        </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -579,8 +580,34 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
     borderBottomWidth: 1,
   },
-  itemName: { fontSize: 16, fontWeight: "800", color: "#333" },
-  itemAmount: { fontSize: 16, fontWeight: "bold" },
+  itemInfo: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: 12,
+    minWidth: 0,
+  },
+  itemName: { flex: 1, fontSize: 16, fontWeight: "800", color: "#333" },
+  itemRight: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 0,
+    maxWidth: "48%",
+  },
+  itemAmount: {
+    flexShrink: 0,
+    fontSize: 16,
+    fontWeight: "bold",
+    maxWidth: "78%",
+    textAlign: "right",
+  },
+  moreButton: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    marginLeft: 8,
+    width: 32,
+  },
   expenseText: { color: "#E53935" },
   incomeText: { color: "#4CAF50" },
   noResultText: {

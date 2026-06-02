@@ -371,12 +371,15 @@ export default function ProfileScreen() {
             color={isDestructive ? palette.danger : palette.primary}
           />
         </View>
-        <Text style={[styles.menuTitle, isDestructive && { color: palette.danger }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.menuTitle, isDestructive && { color: palette.danger }]}
+        >
           {title}
         </Text>
       </View>
       <View style={styles.menuRight}>
-        {value && <Text style={styles.menuValue}>{value}</Text>}
+        {value && <Text style={styles.menuValue} numberOfLines={1}>{value}</Text>}
         <Ionicons name="chevron-forward" size={20} color={palette.textSoft} />
       </View>
     </TouchableOpacity>
@@ -397,8 +400,8 @@ export default function ProfileScreen() {
             <Ionicons name="person-circle" size={80} color={palette.accent} />
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{profile.name}</Text>
-            <Text style={styles.userEmail}>{profile.email || "No email linked"}</Text>
+            <Text style={styles.userName} numberOfLines={1}>{profile.name}</Text>
+            <Text style={styles.userEmail} numberOfLines={1}>{profile.email || "No email linked"}</Text>
           </View>
           <TouchableOpacity style={styles.editButton} onPress={openManageProfile}>
             <Ionicons name="pencil" size={16} color="#FFF" />
@@ -586,6 +589,7 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     fontSize: 20,
@@ -636,6 +640,9 @@ const styles = StyleSheet.create({
   menuLeft: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
+    marginRight: 10,
+    minWidth: 0,
   },
   iconBox: {
     width: 36,
@@ -647,6 +654,7 @@ const styles = StyleSheet.create({
     marginRight: 15,
   },
   menuTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: "600",
     color: "#333",
@@ -658,7 +666,9 @@ const styles = StyleSheet.create({
   menuValue: {
     fontSize: 14,
     color: "#888",
+    flexShrink: 1,
     marginRight: 10,
+    maxWidth: 130,
   },
   divider: {
     height: 1,

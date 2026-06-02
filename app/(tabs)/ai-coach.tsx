@@ -714,7 +714,7 @@ export default function AiCoachScreen() {
         </View>
         <View style={styles.focusCopy}>
           <View style={styles.focusTopRow}>
-            <Text style={styles.focusMeta}>{item.meta}</Text>
+            <Text style={styles.focusMeta} numberOfLines={1}>{item.meta}</Text>
             {item.actionLabel ? (
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -730,7 +730,7 @@ export default function AiCoachScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
-          <Text style={styles.focusTitle}>{item.title}</Text>
+          <Text style={styles.focusTitle} numberOfLines={2}>{item.title}</Text>
           <Text style={styles.focusDescription} numberOfLines={3}>
             {item.description}
           </Text>
@@ -1005,7 +1005,7 @@ export default function AiCoachScreen() {
               {aiInsights.categoryBehaviors.slice(0, 6).map((item) => (
               <View key={item.category} style={styles.behaviorRow}>
                 <View style={styles.behaviorCopy}>
-                  <Text style={styles.behaviorCategory}>{item.category}</Text>
+                  <Text style={styles.behaviorCategory} numberOfLines={1}>{item.category}</Text>
                   <Text style={styles.behaviorDescription}>{item.description}</Text>
                   <Text style={styles.behaviorEvidence}>
                     Average RM {item.averageMonthly.toFixed(0)}
@@ -1053,13 +1053,13 @@ export default function AiCoachScreen() {
                   {aiInsights.unusedBudgetOpportunities.slice(0, 4).map((item) => (
                     <View key={item.category} style={styles.unusedItem}>
                       <View style={styles.unusedItemHeader}>
-                        <View>
-                          <Text style={styles.unusedCategory}>{item.category}</Text>
+                        <View style={styles.unusedInfo}>
+                          <Text style={styles.unusedCategory} numberOfLines={1}>{item.category}</Text>
                           <Text style={styles.unusedMeta}>
                             RM {item.spent.toFixed(0)} used / RM {item.allocated.toFixed(0)} budget
                           </Text>
                         </View>
-                        <Text style={styles.unusedAmount}>
+                        <Text style={styles.unusedAmount} numberOfLines={1}>
                           RM {item.unusedAmount.toFixed(2)}
                         </Text>
                       </View>
@@ -1111,7 +1111,7 @@ export default function AiCoachScreen() {
                       <Ionicons name="leaf-outline" size={22} color={palette.success} />
                     </View>
                     <View style={styles.transferSummary}>
-                      <Text style={styles.savingTitle}>
+                      <Text style={styles.savingTitle} numberOfLines={1}>
                         Save RM {Number(item.amount || 0).toFixed(2)}
                       </Text>
                       <Text style={styles.transferRoute} numberOfLines={1}>
@@ -1175,7 +1175,7 @@ export default function AiCoachScreen() {
                       <Ionicons name="swap-horizontal" size={22} color={palette.primary} />
                     </View>
                     <View style={styles.transferSummary}>
-                      <Text style={styles.transferTitle}>
+                      <Text style={styles.transferTitle} numberOfLines={1}>
                         RM {Number(item.amount).toFixed(2)}
                       </Text>
                       <Text style={styles.transferRoute} numberOfLines={1}>
@@ -1336,6 +1336,7 @@ const styles = StyleSheet.create({
   },
   focusCopy: {
     flex: 1,
+    minWidth: 0,
   },
   focusTopRow: {
     alignItems: "center",
@@ -1820,9 +1821,11 @@ const styles = StyleSheet.create({
   },
   transferSummary: {
     flex: 1,
+    minWidth: 0,
   },
   transferTitle: {
     color: palette.primary,
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: "900",
   },
@@ -1857,6 +1860,7 @@ const styles = StyleSheet.create({
   },
   savingTitle: {
     color: palette.success,
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: "900",
   },
@@ -1953,8 +1957,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  unusedInfo: {
+    flex: 1,
+    marginRight: 10,
+    minWidth: 0,
+  },
   unusedCategory: {
     color: palette.text,
+    flex: 1,
     fontSize: 14,
     fontWeight: "900",
   },
@@ -1966,9 +1976,12 @@ const styles = StyleSheet.create({
   },
   unusedAmount: {
     color: palette.success,
+    flexShrink: 0,
     fontSize: 14,
     fontWeight: "900",
     marginLeft: 10,
+    maxWidth: "42%",
+    textAlign: "right",
   },
   unusedMessage: {
     color: palette.textMuted,

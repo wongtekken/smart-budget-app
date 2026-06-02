@@ -208,7 +208,7 @@ export default function CategoryScreen() {
                           color={isIncome ? palette.success : palette.primary}
                         />
                       </View>
-                      <Text style={styles.itemName}>{parent.name}</Text>
+                      <Text style={styles.itemName} numberOfLines={1}>{parent.name}</Text>
                     </View>
 
                     {/* 如果没有小类，显示勾选图标暗示可以直接点；如果有，显示展开箭头 */}
@@ -257,7 +257,7 @@ export default function CategoryScreen() {
                           >
                             <View style={styles.subItemLeft}>
                               <View style={styles.subDot} />
-                              <Text style={styles.subItemName}>{sub.name}</Text>
+                              <Text style={styles.subItemName} numberOfLines={1}>{sub.name}</Text>
                             </View>
                             <Ionicons
                               name="add-circle-outline"
@@ -339,7 +339,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 20,
   },
-  itemLeft: { flexDirection: "row", alignItems: "center" },
+  itemLeft: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: spacing.md,
+    minWidth: 0,
+  },
   iconBox: {
     width: 40,
     height: 40,
@@ -348,7 +354,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 15,
   },
-  itemName: { fontSize: 16, fontWeight: "bold", color: palette.text },
+  itemName: { flex: 1, fontSize: 16, fontWeight: "bold", color: palette.text },
   subCategoryContainer: {
     backgroundColor: palette.surfaceMuted,
     paddingLeft: 75,
@@ -364,7 +370,13 @@ const styles = StyleSheet.create({
     borderBottomColor: palette.border,
   },
   subCategoryItemLast: { borderBottomWidth: 0 },
-  subItemLeft: { flexDirection: "row", alignItems: "center" },
+  subItemLeft: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: spacing.md,
+    minWidth: 0,
+  },
   subDot: {
     width: 6,
     height: 6,
@@ -372,7 +384,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.textSoft,
     marginRight: 10,
   },
-  subItemName: { fontSize: 15, color: palette.textMuted },
+  subItemName: { flex: 1, fontSize: 15, color: palette.textMuted },
   noResultText: {
     textAlign: "center",
     marginTop: 40,

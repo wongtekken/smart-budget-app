@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Platform,
@@ -418,7 +419,7 @@ export default function ManageCategoriesScreen() {
                           color={isIncome ? palette.success : palette.primary}
                         />
                       </View>
-                      <Text style={styles.itemName}>{parent.name}</Text>
+                      <Text style={styles.itemName} numberOfLines={1}>{parent.name}</Text>
                     </View>
 
                     <View style={styles.actionGroup}>
@@ -439,6 +440,15 @@ export default function ManageCategoriesScreen() {
                           color={palette.primary}
                           style={{ marginRight: 15 }}
                         />
+                      )}
+                      {!parent.isDefault && !parent.isGoal && !parent.name.startsWith("🎯") && (
+                        <TouchableOpacity
+                          hitSlop={8}
+                          onPress={() => handleLongPress(parent, true)}
+                          style={styles.moreButton}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                        </TouchableOpacity>
                       )}
                       <Ionicons
                         name={isExpanded ? "chevron-down" : "chevron-forward"}
@@ -475,17 +485,27 @@ export default function ManageCategoriesScreen() {
                           >
                             <View style={styles.subItemLeft}>
                               <View style={styles.subDot} />
-                              <Text style={styles.subItemName}>{sub.name}</Text>
+                              <Text style={styles.subItemName} numberOfLines={1}>{sub.name}</Text>
                             </View>
 
-                            {sub.isDefault && (
-                              <Ionicons
-                                name="lock-closed"
-                                size={14}
-                              color={palette.textSoft}
-                                style={{ marginRight: 5 }}
-                              />
-                            )}
+                            <View style={styles.actionGroup}>
+                              {sub.isDefault ? (
+                                <Ionicons
+                                  name="lock-closed"
+                                  size={14}
+                                  color={palette.textSoft}
+                                  style={{ marginRight: 5 }}
+                                />
+                              ) : (
+                                <TouchableOpacity
+                                  hitSlop={8}
+                                  onPress={() => handleLongPress(sub, false)}
+                                  style={styles.moreButton}
+                                >
+                                  <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           </TouchableOpacity>
                         ))}
 
@@ -572,7 +592,10 @@ export default function ManageCategoriesScreen() {
       {/* 原有的编辑/新增 Modal */}
       {/* ========================================= */}
       <Modal visible={isModalVisible} transparent={true} animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {editingCategory
@@ -610,7 +633,7 @@ export default function ManageCategoriesScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -687,7 +710,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 20,
   },
-  itemLeft: { flexDirection: "row", alignItems: "center" },
+  itemLeft: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: spacing.md,
+    minWidth: 0,
+  },
   iconBox: {
     width: 40,
     height: 40,
@@ -696,8 +725,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 15,
   },
-  itemName: { fontSize: 16, fontWeight: "bold", color: palette.text },
+  itemName: { flex: 1, fontSize: 16, fontWeight: "bold", color: palette.text },
   actionGroup: { flexDirection: "row", alignItems: "center" },
+  moreButton: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    marginRight: 8,
+    width: 32,
+  },
   subCategoryContainer: {
     backgroundColor: palette.surfaceMuted,
     paddingLeft: 75,
@@ -713,7 +749,13 @@ const styles = StyleSheet.create({
     borderBottomColor: palette.border,
   },
   subCategoryItemLast: { borderBottomWidth: 0 },
-  subItemLeft: { flexDirection: "row", alignItems: "center" },
+  subItemLeft: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    marginRight: spacing.md,
+    minWidth: 0,
+  },
   subDot: {
     width: 6,
     height: 6,
@@ -721,7 +763,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.textSoft,
     marginRight: 10,
   },
-  subItemName: { fontSize: 15, color: palette.textMuted },
+  subItemName: { flex: 1, fontSize: 15, color: palette.textMuted },
   addSubBtn: {
     flexDirection: "row",
     alignItems: "center",

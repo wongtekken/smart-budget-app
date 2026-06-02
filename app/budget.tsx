@@ -3,6 +3,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -580,19 +582,19 @@ export default function BudgetScreen() {
                 onPress={() => openEditModal(cat.name, allocated)}
               >
                 <View style={styles.itemTextRow}>
-                  <Text style={styles.categoryName}>{cat.name}</Text>
+                  <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
 
                   <View style={styles.amountStatusGroup}>
                     {/* 🚨 专属文案：如果是 Goal 变蓝色，否则普通红黄绿 */}
                     {isGoalCategory ? (
-                      <Text style={[styles.amountText, { color: palette.primary }]}>
+                      <Text style={[styles.amountText, { color: palette.primary }]} numberOfLines={1}>
                         {spent > 0
                           ? `Saved: RM ${allocated.toFixed(0)} · Recorded RM ${spent.toFixed(0)}`
                           : `Saved: RM ${allocated.toFixed(0)}`}
                       </Text>
                     ) : (
                       <>
-                        <Text style={styles.amountText}>
+                        <Text style={styles.amountText} numberOfLines={1}>
                           {isUnbudgeted
                             ? `RM ${spent.toFixed(0)} / No budget`
                             : `RM ${spent.toFixed(0)} / RM ${allocated.toFixed(0)}`}
@@ -683,9 +685,9 @@ export default function BudgetScreen() {
                     onPress={() => openEditModal(cat.name, allocated)}
                   >
                     <View style={styles.itemTextRow}>
-                      <Text style={styles.categoryName}>{cat.name}</Text>
+                      <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
                       <View style={styles.amountStatusGroup}>
-                        <Text style={[styles.amountText, { color: palette.primary }]}>
+                        <Text style={[styles.amountText, { color: palette.primary }]} numberOfLines={1}>
                           Planned: RM {allocated.toFixed(0)}
                         </Text>
                         <View style={styles.atRiskBadge}>
@@ -751,7 +753,10 @@ export default function BudgetScreen() {
         transparent={true}
         animationType="fade"
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Adjust Budget</Text>
             <Text style={styles.modalSubtitle}>
@@ -798,7 +803,7 @@ export default function BudgetScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ========================================= */}
@@ -809,7 +814,10 @@ export default function BudgetScreen() {
         transparent={true}
         animationType="slide"
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Category Budget</Text>
             <Text style={styles.modalSubtitle}>
@@ -886,7 +894,7 @@ export default function BudgetScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1012,13 +1020,25 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginBottom: 8,
   },
-  categoryName: { fontSize: 18, fontWeight: "900", color: palette.text },
-  amountStatusGroup: { flexDirection: "row", alignItems: "center" },
+  categoryName: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "900",
+    marginRight: spacing.md,
+    minWidth: 0,
+  },
+  amountStatusGroup: {
+    alignItems: "flex-end",
+    flexShrink: 0,
+    maxWidth: "48%",
+  },
   amountText: {
     fontSize: 13,
     fontWeight: "bold",
     color: palette.text,
-    marginRight: 10,
+    marginBottom: 4,
+    textAlign: "right",
   },
   atRiskBadge: { flexDirection: "row", alignItems: "center" },
   atRiskText: {

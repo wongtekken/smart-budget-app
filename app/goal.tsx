@@ -4,6 +4,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
@@ -378,10 +379,19 @@ export default function GoalScreen() {
                       ]}
                     >
                       <View style={styles.rowBetween}>
-                        <Text style={styles.goalTitle}>{goal.title}</Text>
-                        <Text style={styles.detailText}>
-                          Deadline: {goal.deadline}
-                        </Text>
+                        <Text style={styles.goalTitle} numberOfLines={1}>{goal.title}</Text>
+                        <View style={styles.detailActionGroup}>
+                          <Text style={styles.detailText} numberOfLines={1}>
+                            Deadline: {goal.deadline}
+                          </Text>
+                          <TouchableOpacity
+                            hitSlop={8}
+                            onPress={() => handleLongPress(goal)}
+                            style={styles.moreButton}
+                          >
+                            <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
 
                       <View
@@ -401,7 +411,7 @@ export default function GoalScreen() {
                         >
                           {daysLeft === 0 ? "Expired" : `${daysLeft} days left`}
                         </Text>
-                        <Text style={styles.amountText}>
+                        <Text style={styles.amountText} numberOfLines={1}>
                           RM {realCurrentAmount.toFixed(0)} /{" "}
                           {goal.targetAmount}
                         </Text>
@@ -444,10 +454,19 @@ export default function GoalScreen() {
                       ]}
                     >
                       <View style={styles.rowBetween}>
-                        <Text style={styles.goalTitle}>{saving.title}</Text>
-                        <Text style={styles.detailText}>
-                          Created: {saving.createdAt}
-                        </Text>
+                        <Text style={styles.goalTitle} numberOfLines={1}>{saving.title}</Text>
+                        <View style={styles.detailActionGroup}>
+                          <Text style={styles.detailText} numberOfLines={1}>
+                            Created: {saving.createdAt}
+                          </Text>
+                          <TouchableOpacity
+                            hitSlop={8}
+                            onPress={() => handleLongPress(saving)}
+                            style={styles.moreButton}
+                          >
+                            <Ionicons name="ellipsis-horizontal" size={20} color={palette.textSoft} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
 
                       <View style={styles.balanceRow}>
@@ -518,7 +537,10 @@ export default function GoalScreen() {
 
       {/* 🚨 Builder Modal */}
       <Modal visible={isModalVisible} transparent={true} animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalHeaderTitle}>
               {editingGoalId ? "Edit Goal Details" : "Create New Goal"}
@@ -646,7 +668,7 @@ export default function GoalScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {showDatePicker && (
@@ -737,13 +759,46 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   rowBetween: {
+    gap: spacing.md,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  goalTitle: { fontSize: 18, fontWeight: "800", color: palette.text },
-  detailText: { fontSize: 12, fontWeight: "600", color: palette.textMuted },
-  amountText: { fontSize: 14, fontWeight: "800", color: palette.text },
+  goalTitle: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "800",
+    minWidth: 0,
+  },
+  detailText: {
+    color: palette.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  detailActionGroup: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 0,
+    maxWidth: "54%",
+  },
+  moreButton: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    marginLeft: 6,
+    width: 32,
+  },
+  amountText: {
+    color: palette.text,
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: "800",
+    maxWidth: "58%",
+    textAlign: "right",
+  },
   progressBarBg: {
     height: 12,
     backgroundColor: palette.primarySoft,

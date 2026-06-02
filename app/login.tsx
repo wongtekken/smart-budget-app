@@ -2,7 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -57,7 +60,15 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         {/* 头部标题区域 */}
         <View style={styles.headerContainer}>
           <Text style={styles.title}>Login</Text>
@@ -130,7 +141,8 @@ export default function LoginScreen() {
             <Text style={styles.createAccountText}>Create an account</Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -141,10 +153,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.background,
   },
-  content: {
+  keyboardView: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     paddingHorizontal: 30,
     justifyContent: "center",
+    paddingVertical: 24,
   },
   headerContainer: {
     marginBottom: 40,

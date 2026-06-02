@@ -2,7 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -128,7 +131,15 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.headerContainer}>
           <Text style={styles.title}>Register</Text>
           <Text style={styles.subtitle}>Let&apos;s get started.</Text>
@@ -221,14 +232,21 @@ export default function RegisterScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
-  content: { flex: 1, paddingHorizontal: 30, justifyContent: "center" },
+  keyboardView: { flex: 1 },
+  content: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: 30,
+    paddingVertical: 24,
+  },
   headerContainer: { marginBottom: 40 },
   title: { fontSize: 50, fontWeight: "900", color: "#FF8216", marginBottom: 5 },
   subtitle: { fontSize: 18, fontWeight: "bold", color: "#FF8216" },

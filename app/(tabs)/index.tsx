@@ -563,7 +563,7 @@ export default function DashboardScreen() {
                           </Text>
 
                           <View style={styles.breakdownAmountGroup}>
-                            <Text style={styles.breakdownAmountText}>
+                            <Text style={styles.breakdownAmountText} numberOfLines={1}>
                               {isUnbudgeted
                                 ? `RM ${item.spent.toFixed(0)} / No budget`
                                 : `RM ${item.spent.toFixed(0)} / RM ${item.allocated.toFixed(0)}`}
@@ -884,14 +884,16 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   breakdownAmountGroup: {
-    alignItems: "center",
-    flexDirection: "row",
+    alignItems: "flex-end",
+    flexShrink: 0,
+    maxWidth: "48%",
   },
   breakdownAmountText: {
     color: palette.text,
     fontSize: 13,
     fontWeight: "700",
-    marginRight: spacing.sm,
+    marginBottom: spacing.xs,
+    textAlign: "right",
   },
   breakdownStatusBadge: {
     alignItems: "center",
