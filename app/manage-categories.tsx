@@ -50,13 +50,22 @@ type CategoryType = {
   goalId?: string;
 };
 
+type CategoryTab = "Expense" | "Income";
+
+const GOAL_PREFIX = "\uD83C\uDFAF";
+const CATEGORY_TABS: CategoryTab[] = ["Expense", "Income"];
+
 const normalizeName = (value: string) => value.trim().toLowerCase();
+const isGoalCategory = (category: CategoryType) =>
+  Boolean(category.isGoal) ||
+  category.type === "Transfer" ||
+  category.name.startsWith(GOAL_PREFIX);
 
 export default function ManageCategoriesScreen() {
   const { showConfirm, showDialog } = useAppDialog();
   const duplicateCleanupInFlightRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState<"Expense" | "Income">("Expense");
+  const [activeTab, setActiveTab] = useState<CategoryTab>("Expense");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -139,7 +148,12 @@ export default function ManageCategoriesScreen() {
     return () => unsubscribe();
   }, []);
 
-  const currentTabData = categories.filter((c) => c.type === activeTab);
+  const currentTabData = categories.filter((category) => {
+    if (activeTab === "Expense") {
+      return category.type === "Expense" && !isGoalCategory(category);
+    }
+    return category.type === "Income";
+  });
   const allParents = currentTabData.filter((c) => !c.parentId);
 
   const getSubcategories = (parentId: string) => {
@@ -172,10 +186,10 @@ export default function ManageCategoriesScreen() {
       });
       return;
     }
-    if (category.name.startsWith("🎯") || category.isGoal) {
+    if (isGoalCategory(category)) {
       showDialog({
         title: "Goal Category",
-        message: "This is linked to a Goal. Please manage it inside the Goal tab.",
+        message: "This is linked to a Goal. Please manage it from the Goal screen.",
         type: "info",
       });
       return;
@@ -301,6 +315,8 @@ export default function ManageCategoriesScreen() {
     setAddingToParentId(null);
   };
 
+  const emptyCategoryMessage = `No ${activeTab} categories yet. Click + to add one.`;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -309,44 +325,26 @@ export default function ManageCategoriesScreen() {
 
       <View style={styles.content}>
         <View style={styles.segmentedControl}>
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              activeTab === "Expense" && styles.segmentSelected,
-            ]}
-            onPress={() => {
-              setActiveTab("Expense");
-              setSearchQuery("");
-            }}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                activeTab === "Expense" && styles.segmentTextSelected,
-              ]}
+          {CATEGORY_TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.segment, activeTab === tab && styles.segmentSelected]}
+              onPress={() => {
+                setActiveTab(tab);
+                setSearchQuery("");
+                setExpandedId(null);
+              }}
             >
-              Expense
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.segment,
-              activeTab === "Income" && styles.segmentSelected,
-            ]}
-            onPress={() => {
-              setActiveTab("Income");
-              setSearchQuery("");
-            }}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                activeTab === "Income" && styles.segmentTextSelected,
-              ]}
-            >
-              Income
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.segmentText,
+                  activeTab === tab && styles.segmentTextSelected,
+                ]}
+              >
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <View style={styles.searchContainer}>
@@ -410,7 +408,11 @@ export default function ManageCategoriesScreen() {
                       <View
                         style={[
                           styles.iconBox,
-                          { backgroundColor: isIncome ? "#E8F5E9" : "#FFF3E0" },
+                          {
+                            backgroundColor: isIncome
+                              ? "#E8F5E9"
+                              : "#FFF3E0",
+                          },
                         ]}
                       >
                         <Ionicons
@@ -433,7 +435,7 @@ export default function ManageCategoriesScreen() {
                         />
                       )}
                       {/* 🚨 如果是目标，显示靶子图标 */}
-                      {(parent.name.startsWith("🎯") || parent.isGoal) && (
+                      {isGoalCategory(parent) && (
                         <Ionicons
                           name="flag"
                           size={16}
@@ -441,7 +443,7 @@ export default function ManageCategoriesScreen() {
                           style={{ marginRight: 15 }}
                         />
                       )}
-                      {!parent.isDefault && !parent.isGoal && !parent.name.startsWith("🎯") && (
+                      {!parent.isDefault && !isGoalCategory(parent) && (
                         <TouchableOpacity
                           hitSlop={8}
                           onPress={() => handleLongPress(parent, true)}
@@ -489,11 +491,11 @@ export default function ManageCategoriesScreen() {
                             </View>
 
                             <View style={styles.actionGroup}>
-                              {sub.isDefault ? (
+                              {sub.isDefault || isGoalCategory(sub) ? (
                                 <Ionicons
-                                  name="lock-closed"
+                                  name={isGoalCategory(sub) ? "flag" : "lock-closed"}
                                   size={14}
-                                  color={palette.textSoft}
+                                  color={isGoalCategory(sub) ? palette.primary : palette.textSoft}
                                   style={{ marginRight: 5 }}
                                 />
                               ) : (
@@ -528,7 +530,7 @@ export default function ManageCategoriesScreen() {
               <Text style={styles.noResultText}>
                 {searchQuery
                   ? "No matching categories found."
-                  : `No ${activeTab} categories yet. Click + to add one.`}
+                  : emptyCategoryMessage}
               </Text>
             )}
           </View>
