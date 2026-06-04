@@ -265,6 +265,7 @@ export default function GoalScreen() {
           isDefault: false,
           isGoal: true, // 特殊标记
           goalId: goalRef.id,
+          createdAt: new Date(),
         });
       }
 

@@ -49,7 +49,7 @@ export const buildDefaultBudgetTemplateDoc = (
       "Expense",
       allocation.categoryName,
     ),
-    category: allocation.categoryName,
+    categoryName: allocation.categoryName,
     mode: allocation.mode,
     value: allocation.value,
   })),

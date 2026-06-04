@@ -51,6 +51,7 @@ const isGoalCategory = (category: any) =>
 
 type TemplateAllocation = {
   category?: string;
+  categoryName?: string;
   categoryId?: string;
   mode?: "Fixed" | "Percentage";
   value?: number | string;
@@ -272,15 +273,15 @@ export default function BudgetScreen() {
           const activeTemplateItems = templateData
             .map((item) => ({
               ...item,
-              category: String(item.category || "").trim(),
+              categoryName: String(item.categoryName || item.category || "").trim(),
               categoryId: String(item.categoryId || "").trim(),
               value: Number(item.value) || 0,
             }))
-            .filter((item) => item.category);
+            .filter((item) => item.categoryName);
           const fixedTotal = activeTemplateItems
             .filter((item) => {
               const matchedCategory = parentCategories.find(
-                (cat) => cat.id === item.categoryId || cat.name === item.category,
+                (cat) => cat.id === item.categoryId || cat.name === item.categoryName,
               );
               return item.mode === "Fixed" && Boolean(matchedCategory);
             })
@@ -312,14 +313,14 @@ export default function BudgetScreen() {
           const remainingAfterFixed = totalAvailable - fixedTotal;
 
           activeTemplateItems.forEach((item) => {
-            const { category } = item;
+            const { categoryName } = item;
             const matchedCategory = parentCategories.find(
-              (cat) => cat.id === item.categoryId || cat.name === category,
+              (cat) => cat.id === item.categoryId || cat.name === categoryName,
             );
             const categoryKey = matchedCategory?.id || "";
 
             if (!categoryKey) {
-              skippedCategories.push(category);
+              skippedCategories.push(categoryName);
               return;
             }
 

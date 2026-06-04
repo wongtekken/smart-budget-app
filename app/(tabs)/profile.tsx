@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
 import {
   collection,
+  deleteField,
   doc,
   onSnapshot,
   query,
@@ -137,7 +138,8 @@ export default function ProfileScreen() {
           const data = snapshot.exists() ? snapshot.data() : {};
           const email = String(data.email || authEmail);
           const name = String(
-            data.username ||
+            data.displayName ||
+              data.username ||
               data.name ||
               user.displayName ||
               getDefaultProfileName(email),
@@ -321,11 +323,12 @@ export default function ProfileScreen() {
       await setDoc(
         doc(db, "users", user.uid),
         {
+          displayName: trimmedName,
           email: user.email || profile.email,
-          name: trimmedName,
+          name: deleteField(),
           uid: user.uid,
           updatedAt: new Date(),
-          username: trimmedName,
+          username: deleteField(),
         },
         { merge: true },
       );

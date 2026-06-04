@@ -265,6 +265,7 @@ export default function ManageCategoriesScreen() {
       if (editingCategory) {
         await updateDoc(doc(db, "categories", editingCategory.id), {
           name: trimmedName,
+          updatedAt: new Date(),
         });
       } else {
         await addDoc(collection(db, "categories"), {

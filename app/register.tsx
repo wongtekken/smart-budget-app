@@ -71,7 +71,7 @@ export default function RegisterScreen() {
       await updateProfile(user, { displayName: trimmedUsername });
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
-        username: trimmedUsername,
+        displayName: trimmedUsername,
         email: user.email,
         createdAt: new Date(),
       });

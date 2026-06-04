@@ -30,8 +30,9 @@ import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
 type AllocationType = {
+  category?: string;
   categoryId: string;
-  category: string;
+  categoryName: string;
   mode: "Fixed" | "Percentage";
   value: number;
 };
@@ -45,6 +46,14 @@ type TemplateType = {
 };
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
+
+const normalizeAllocationsForSave = (allocations: AllocationType[]) =>
+  allocations.map((allocation) => ({
+    categoryId: allocation.categoryId,
+    categoryName: allocation.categoryName || allocation.category || "",
+    mode: allocation.mode,
+    value: allocation.value,
+  }));
 
 export default function TemplateScreen() {
   const router = useRouter();
@@ -129,7 +138,7 @@ export default function TemplateScreen() {
       ...draftAllocations,
       {
         categoryId: category.id,
-        category: category.name,
+        categoryName: category.name,
         mode: "Percentage",
         value: 0,
       },
@@ -194,17 +203,18 @@ export default function TemplateScreen() {
     }
 
     try {
+      const allocationsForSave = normalizeAllocationsForSave(draftAllocations);
       if (editingTemplateId) {
         await updateDoc(doc(db, "templates", editingTemplateId), {
           name: trimmedName,
-          allocations: draftAllocations,
+          allocations: allocationsForSave,
           updatedAt: new Date(),
         });
       } else {
         await addDoc(collection(db, "templates"), {
           userId: user.uid,
           name: trimmedName,
-          allocations: draftAllocations,
+          allocations: allocationsForSave,
           createdAt: new Date(),
         });
       }
@@ -393,7 +403,9 @@ export default function TemplateScreen() {
                           {item.mode === "Fixed" ? "FIXED" : "%"}
                         </Text>
                       </View>
-                      <Text style={styles.categoryText} numberOfLines={1}>{item.category}</Text>
+                      <Text style={styles.categoryText} numberOfLines={1}>
+                        {item.categoryName || item.category}
+                      </Text>
                     </View>
                     <Text
                       numberOfLines={1}
@@ -515,7 +527,9 @@ export default function TemplateScreen() {
             <ScrollView style={{ maxHeight: 300, marginBottom: 15 }}>
               {draftAllocations.map((draft, index) => (
                 <View key={index} style={styles.draftItem}>
-                  <Text style={styles.draftCatName} numberOfLines={1}>{draft.category}</Text>
+                  <Text style={styles.draftCatName} numberOfLines={1}>
+                    {draft.categoryName || draft.category}
+                  </Text>
                   <View style={styles.draftControls}>
                     <TouchableOpacity
                       style={[
