@@ -13,7 +13,6 @@ export type AchievementTemplateData = {
 };
 
 export type AchievementTransactionData = {
-  aiMode?: string;
   date?: string;
   entrySource?: string;
   source?: string;
@@ -130,7 +129,7 @@ const getCalendarMonthProgress = (dates: string[]) => {
 };
 
 const hasSource = (transaction: AchievementTransactionData, source: string) =>
-  [transaction.entrySource, transaction.source, transaction.aiMode]
+  [transaction.entrySource, transaction.source]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(source));
 

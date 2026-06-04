@@ -134,7 +134,6 @@ export const processDueRecurringTransactions = async (userId: string) => {
             goalId: recurring.goalId || null,
             date: nextExecuteDate,
             entrySource: "recurring",
-            source: "recurring",
             createdAt: new Date(),
           },
         );

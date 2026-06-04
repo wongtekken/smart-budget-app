@@ -766,9 +766,7 @@ export default function AddTransactionScreen() {
         entrySource === "manual"
           ? {}
           : {
-              aiMode: entrySource,
               entrySource,
-              source: entrySource,
             };
       const categoryFields = resolveCategorySelection();
       let saveMessage = editId
@@ -872,7 +870,6 @@ export default function AddTransactionScreen() {
           createdAt: now,
           entrySource,
           ...goalFields,
-          source: entrySource,
         });
 
         if (recurringRef) {
