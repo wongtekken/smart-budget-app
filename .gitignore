@@ -40,6 +40,9 @@ yarn-error.*
 
 app-example
 
+# one-off local migrations
+scripts/migrate-transaction-categories.js
+
 # generated native folders
 /ios
 /android
