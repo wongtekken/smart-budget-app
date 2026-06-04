@@ -139,8 +139,6 @@ export default function ProfileScreen() {
           const email = String(data.email || authEmail);
           const name = String(
             data.displayName ||
-              data.username ||
-              data.name ||
               user.displayName ||
               getDefaultProfileName(email),
           );

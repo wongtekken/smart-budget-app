@@ -15,7 +15,6 @@ export type AchievementTemplateData = {
 export type AchievementTransactionData = {
   date?: string;
   entrySource?: string;
-  source?: string;
 };
 
 export type AchievementEventData = {
@@ -129,9 +128,7 @@ const getCalendarMonthProgress = (dates: string[]) => {
 };
 
 const hasSource = (transaction: AchievementTransactionData, source: string) =>
-  [transaction.entrySource, transaction.source]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(source));
+  String(transaction.entrySource || "").toLowerCase().includes(source);
 
 const getMetrics = (
   categories: AchievementCategoryData[],

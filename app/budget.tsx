@@ -50,7 +50,6 @@ const isGoalCategory = (category: any) =>
   isSavingsCategoryName(category?.name);
 
 type TemplateAllocation = {
-  category?: string;
   categoryName?: string;
   categoryId?: string;
   mode?: "Fixed" | "Percentage";
@@ -273,7 +272,7 @@ export default function BudgetScreen() {
           const activeTemplateItems = templateData
             .map((item) => ({
               ...item,
-              categoryName: String(item.categoryName || item.category || "").trim(),
+              categoryName: String(item.categoryName || "").trim(),
               categoryId: String(item.categoryId || "").trim(),
               value: Number(item.value) || 0,
             }))

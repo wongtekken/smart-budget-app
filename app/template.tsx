@@ -30,7 +30,6 @@ import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
 
 type AllocationType = {
-  category?: string;
   categoryId: string;
   categoryName: string;
   mode: "Fixed" | "Percentage";
@@ -50,7 +49,7 @@ const normalizeName = (value: string) => value.trim().toLowerCase();
 const normalizeAllocationsForSave = (allocations: AllocationType[]) =>
   allocations.map((allocation) => ({
     categoryId: allocation.categoryId,
-    categoryName: allocation.categoryName || allocation.category || "",
+    categoryName: allocation.categoryName,
     mode: allocation.mode,
     value: allocation.value,
   }));
@@ -404,7 +403,7 @@ export default function TemplateScreen() {
                         </Text>
                       </View>
                       <Text style={styles.categoryText} numberOfLines={1}>
-                        {item.categoryName || item.category}
+                        {item.categoryName}
                       </Text>
                     </View>
                     <Text
@@ -528,7 +527,7 @@ export default function TemplateScreen() {
               {draftAllocations.map((draft, index) => (
                 <View key={index} style={styles.draftItem}>
                   <Text style={styles.draftCatName} numberOfLines={1}>
-                    {draft.categoryName || draft.category}
+                    {draft.categoryName}
                   </Text>
                   <View style={styles.draftControls}>
                     <TouchableOpacity

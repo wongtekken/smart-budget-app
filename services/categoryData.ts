@@ -89,7 +89,7 @@ export const getAllocationAmount = (
   category: CategoryRecord,
 ) => {
   if (!allocations || !category.id) return 0;
-  return Number(allocations[category.id] ?? allocations[category.name || ""] ?? 0);
+  return Number(allocations[category.id] ?? 0);
 };
 
 export const allocationsByCategoryName = (
@@ -97,22 +97,13 @@ export const allocationsByCategoryName = (
   categories: CategoryRecord[],
 ) => {
   const normalized: Record<string, number> = {};
-  const knownKeys = new Set<string>();
 
   categories
     .filter((category) => !category.parentId && category.name)
     .forEach((category) => {
       const amount = getAllocationAmount(allocations, category);
       if (amount > 0) normalized[category.name as string] = amount;
-      knownKeys.add(category.id);
-      knownKeys.add(category.name as string);
     });
-
-  Object.entries(allocations || {}).forEach(([key, value]) => {
-    if (!knownKeys.has(key) && Number(value) > 0) {
-      normalized[key] = Number(value) || 0;
-    }
-  });
 
   return normalized;
 };
