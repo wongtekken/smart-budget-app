@@ -100,6 +100,7 @@ export type FinancialIntelligenceResult = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const BASELINE_MONTHS = 3;
+const MIN_BUDGET_TRANSFER_AMOUNT = 0.01;
 
 const normalizeType = (type?: string) => String(type || "").toLowerCase();
 
@@ -269,6 +270,11 @@ const getBudgetProgress = (
 
     return { allocated, category, progress, remaining: allocated - spent, spent };
   });
+
+const formatBudgetUsedPercent = (progress: number) => {
+  if (progress > 0 && progress < 1) return Math.min(Math.floor(progress * 100), 99);
+  return Math.round(progress * 100);
+};
 
 const getMonthlySeriesByCategory = (
   transactions: TransactionRecord[],
@@ -523,20 +529,20 @@ const createBudgetTransfers = (
   const progress = getBudgetProgress(currentSpendByCategory, currentAllocations);
   const overspent = progress.filter((item) => item.allocated > 0 && item.remaining < 0);
   const unused = progress
-    .filter((item) => item.allocated > 0 && item.remaining > item.allocated * 0.4)
+    .filter((item) => item.allocated > 0 && item.remaining >= 10)
     .sort((a, b) => b.remaining - a.remaining);
 
   const suggestions: BudgetTransferSuggestion[] = [];
   overspent.forEach((target) => {
     const source = unused.find((item) => item.category !== target.category && item.remaining > 0);
     if (!source) return;
-    const amount = Math.min(Math.abs(target.remaining), source.remaining * 0.5);
-    if (amount < 10) return;
+    const amount = Number(Math.min(Math.abs(target.remaining), source.remaining * 0.5).toFixed(2));
+    if (amount < MIN_BUDGET_TRANSFER_AMOUNT) return;
 
     suggestions.push({
       amount,
       fromCategory: source.category,
-      message: `${target.category} is over budget. You can transfer RM ${amount.toFixed(0)} from ${source.category}, which still has unused funds.`,
+      message: `${target.category} is over budget. You can transfer RM ${amount.toFixed(2)} from ${source.category}, which still has unused funds.`,
       toCategory: target.category,
     });
   });
@@ -739,6 +745,7 @@ export const createReactiveBudgetAlert = (
 
   const progress = spent / allocated;
   if (progress < 0.8) return null;
+  const usedPercent = formatBudgetUsedPercent(progress);
 
   return {
     amount: spent,
@@ -748,11 +755,11 @@ export const createReactiveBudgetAlert = (
     currentAmount: spent,
     description:
       progress >= 1
-        ? `This transaction pushes ${category} over budget at ${Math.round(progress * 100)}%. Consider limiting this category or transferring unused budget.`
-        : `This transaction puts ${category} at ${Math.round(progress * 100)}% of its budget. Spend carefully for the rest of the month.`,
+        ? `This transaction pushes ${category} over budget at ${usedPercent}%. Consider limiting this category or transferring unused budget.`
+        : `This transaction puts ${category} at ${usedPercent}% of its budget. Spend carefully for the rest of the month.`,
     differenceAmount: spent - allocated,
     differencePercent: progress * 100,
-    metric: `${Math.round(progress * 100)}% budget used`,
+    metric: `${usedPercent}% budget used`,
     reason: "This alert is calculated immediately after the transaction is saved.",
     severity: progress >= 1 ? ("danger" as const) : ("warning" as const),
     title: "Reactive budget alert",
@@ -794,24 +801,28 @@ export const buildFinancialIntelligence = ({
   const budgetProgress = getBudgetProgress(currentSpendByCategory, activeAllocations);
   const reactiveAlerts = budgetProgress
     .filter((item) => item.allocated > 0 && item.progress >= 0.8)
-    .map((item) => ({
-      amount: item.spent,
-      baselineAmount: item.allocated,
-      category: item.category,
-      confidence: item.progress >= 1 ? ("High" as const) : ("Medium" as const),
-      currentAmount: item.spent,
-      description:
-        item.progress >= 1
-          ? `${item.category} is over budget by RM ${Math.abs(item.remaining).toFixed(0)}.`
-          : `${item.category} has used ${Math.round(item.progress * 100)}% of its budget.`,
-      differenceAmount: item.spent - item.allocated,
-      differencePercent: item.progress * 100,
-      impact: item.remaining,
-      metric: `${Math.round(item.progress * 100)}% used`,
-      reason: "Current month category spending is compared with the assigned category budget.",
-      severity: item.progress >= 1 ? ("danger" as const) : ("warning" as const),
-      title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
-    }));
+    .map((item) => {
+      const usedPercent = formatBudgetUsedPercent(item.progress);
+
+      return {
+        amount: item.spent,
+        baselineAmount: item.allocated,
+        category: item.category,
+        confidence: item.progress >= 1 ? ("High" as const) : ("Medium" as const),
+        currentAmount: item.spent,
+        description:
+          item.progress >= 1
+            ? `${item.category} is over budget by RM ${Math.abs(item.remaining).toFixed(0)}.`
+            : `${item.category} has used ${usedPercent}% of its budget.`,
+        differenceAmount: item.spent - item.allocated,
+        differencePercent: item.progress * 100,
+        impact: item.remaining,
+        metric: `${usedPercent}% used`,
+        reason: "Current month category spending is compared with the assigned category budget.",
+        severity: item.progress >= 1 ? ("danger" as const) : ("warning" as const),
+        title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
+      };
+    });
 
   const budgetTransfers = createBudgetTransfers(currentSpendByCategory, activeAllocations);
   const unusedBudgetOpportunities = createUnusedBudgetOpportunities(

@@ -96,6 +96,7 @@ const InsightCard = ({
   description,
   differenceAmount,
   differencePercent,
+  evidenceLabels,
   metric,
   reason,
   severity,
@@ -112,13 +113,28 @@ const InsightCard = ({
   | "reason"
   | "severity"
   | "title"
->) => {
+> & {
+  evidenceLabels?: {
+    baseline?: string;
+    current?: string;
+    difference?: string;
+    percent?: string;
+  };
+}) => {
   const color = getSeverityColor(severity);
   const evidence = [
-    currentAmount !== undefined ? { label: "Current", value: formatAmount(currentAmount) } : null,
-    baselineAmount !== undefined ? { label: "Baseline", value: formatAmount(baselineAmount) } : null,
-    differenceAmount !== undefined ? { label: "Diff", value: formatAmount(differenceAmount) } : null,
-    differencePercent !== undefined ? { label: "Change", value: formatPercent(differencePercent) } : null,
+    currentAmount !== undefined
+      ? { label: evidenceLabels?.current || "Current", value: formatAmount(currentAmount) }
+      : null,
+    baselineAmount !== undefined
+      ? { label: evidenceLabels?.baseline || "Baseline", value: formatAmount(baselineAmount) }
+      : null,
+    differenceAmount !== undefined
+      ? { label: evidenceLabels?.difference || "Diff", value: formatAmount(differenceAmount) }
+      : null,
+    differencePercent !== undefined
+      ? { label: evidenceLabels?.percent || "Change", value: formatPercent(differencePercent) }
+      : null,
     confidence ? { label: "Confidence", value: confidence } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
@@ -287,6 +303,7 @@ export default function AiCoachScreen() {
     ...aiInsights.reactiveAlerts,
   ].filter((item) => item.severity === "danger" || item.severity === "warning").length;
   const opportunityCount =
+    aiInsights.budgetTransfers.length +
     aiInsights.savingOpportunities.length +
     aiInsights.underspentRecommendations.length +
     aiInsights.goalRecommendations.length +
@@ -705,7 +722,7 @@ export default function AiCoachScreen() {
           icon: "swap-horizontal",
           meta: `${firstTransfer.fromCategory} to ${firstTransfer.toCategory}`,
           onPress: () => handleBudgetTransfer(firstTransfer),
-          title: `Move RM ${firstTransfer.amount.toFixed(0)}`,
+          title: `Move RM ${firstTransfer.amount.toFixed(2)}`,
           tone: "primary",
         }
       : null,
@@ -1162,59 +1179,88 @@ export default function AiCoachScreen() {
                 </View>
               )}
 
-              {aiInsights.savingOpportunities.map((item) => (
-                <View key={`${item.category}-${item.title}`} style={styles.savingActionCard}>
-                  <View style={styles.transferHeader}>
-                    <View style={styles.savingIcon}>
-                      <Ionicons name="leaf-outline" size={22} color={palette.success} />
-                    </View>
-                    <View style={styles.transferSummary}>
-                      <Text style={styles.savingTitle} numberOfLines={1}>
-                        Save RM {Number(item.amount || 0).toFixed(2)}
-                      </Text>
-                      <Text style={styles.transferRoute} numberOfLines={1}>
-                        {item.category}
-                      </Text>
-                    </View>
-                  </View>
-                  <InsightCard {...item} />
-                  <View style={styles.savingActions}>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      disabled={savingActionInProgress}
-                      onPress={() => executeSavingBudgetAction(item, "reduce")}
-                      style={[
-                        styles.savingButton,
-                        savingActionInProgress && styles.transferButtonDisabled,
-                      ]}
-                    >
-                      {savingActionInProgress ? (
-                        <ActivityIndicator color="#FFF" />
-                      ) : (
-                        <>
-                          <Ionicons name="remove-circle" size={18} color="#FFF" />
-                          <Text style={styles.savingButtonText}>Reduce Budget</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+              {aiInsights.savingOpportunities.map((item) => {
+                const category = item.category || "";
+                const currentAllocated = Number(currentAllocations[category] || 0);
+                const currentSpent = Number(item.currentAmount || 0);
+                const requestedSaving = Number((item.amount || item.impact || 0).toFixed(2));
+                const availableReduction = Number(
+                  Math.max(currentAllocated - currentSpent, 0).toFixed(2),
+                );
+                const canAdjustBudget =
+                  availableReduction > 0 &&
+                  Math.min(requestedSaving, availableReduction) > 0;
 
-                    {goalCategoryName ? (
+                return (
+                  <View key={`${item.category}-${item.title}`} style={styles.savingActionCard}>
+                    <View style={styles.transferHeader}>
+                      <View style={styles.savingIcon}>
+                        <Ionicons name="leaf-outline" size={22} color={palette.success} />
+                      </View>
+                      <View style={styles.transferSummary}>
+                        <Text style={styles.savingTitle} numberOfLines={1}>
+                          Save RM {Number(item.amount || 0).toFixed(2)}
+                        </Text>
+                        <Text style={styles.transferRoute} numberOfLines={1}>
+                          {item.category}
+                        </Text>
+                      </View>
+                    </View>
+                    <InsightCard
+                      {...item}
+                      evidenceLabels={{
+                        baseline: "Budget",
+                        current: "Spent",
+                        difference: "Potential",
+                        percent: "Target",
+                      }}
+                    />
+                    <View style={styles.savingActions}>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={savingActionInProgress}
-                        onPress={() => executeSavingBudgetAction(item, "goal")}
+                        disabled={savingActionInProgress || !canAdjustBudget}
+                        onPress={() => executeSavingBudgetAction(item, "reduce")}
                         style={[
-                          styles.savingSecondaryButton,
-                          savingActionInProgress && styles.transferButtonDisabled,
+                          styles.savingButton,
+                          (savingActionInProgress || !canAdjustBudget) &&
+                            styles.transferButtonDisabled,
                         ]}
                       >
-                        <Ionicons name="flag-outline" size={18} color={palette.success} />
-                        <Text style={styles.savingSecondaryButtonText}>Plan Goal</Text>
+                        {savingActionInProgress ? (
+                          <ActivityIndicator color="#FFF" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name={canAdjustBudget ? "remove-circle" : "lock-closed-outline"}
+                              size={18}
+                              color="#FFF"
+                            />
+                            <Text style={styles.savingButtonText}>
+                              {canAdjustBudget ? "Adjust Budget" : "Budget Used"}
+                            </Text>
+                          </>
+                        )}
                       </TouchableOpacity>
-                    ) : null}
+
+                      {goalCategoryName ? (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          disabled={savingActionInProgress || !canAdjustBudget}
+                          onPress={() => executeSavingBudgetAction(item, "goal")}
+                          style={[
+                            styles.savingSecondaryButton,
+                            (savingActionInProgress || !canAdjustBudget) &&
+                              styles.transferButtonDisabled,
+                          ]}
+                        >
+                          <Ionicons name="flag-outline" size={18} color={palette.success} />
+                          <Text style={styles.savingSecondaryButtonText}>Plan Goal</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
 
               {coachCards.length > 0 ? (
                 coachCards.map((item, index) => (
