@@ -101,6 +101,7 @@ export type FinancialIntelligenceResult = {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const BASELINE_MONTHS = 3;
 const MIN_BUDGET_TRANSFER_AMOUNT = 0.01;
+const BUDGET_EPSILON = 0.01;
 
 const normalizeType = (type?: string) => String(type || "").toLowerCase();
 
@@ -274,6 +275,21 @@ const getBudgetProgress = (
 const formatBudgetUsedPercent = (progress: number) => {
   if (progress > 0 && progress < 1) return Math.min(Math.floor(progress * 100), 99);
   return Math.round(progress * 100);
+};
+
+const getBudgetRiskState = (spent: number, allocated: number) => {
+  const remaining = allocated - spent;
+  const progress = allocated > 0 ? spent / allocated : 0;
+  const isOverBudget = remaining < -BUDGET_EPSILON;
+  const isFullyUsed = !isOverBudget && (Math.abs(remaining) <= BUDGET_EPSILON || progress >= 0.995);
+
+  return {
+    isFullyUsed,
+    isOverBudget,
+    progress,
+    remaining,
+    usedPercent: formatBudgetUsedPercent(progress),
+  };
 };
 
 const getMonthlySeriesByCategory = (
@@ -527,7 +543,9 @@ const createBudgetTransfers = (
   currentAllocations: Record<string, number>,
 ) => {
   const progress = getBudgetProgress(currentSpendByCategory, currentAllocations);
-  const overspent = progress.filter((item) => item.allocated > 0 && item.remaining < 0);
+  const overspent = progress.filter(
+    (item) => item.allocated > 0 && item.remaining < -BUDGET_EPSILON,
+  );
   const unused = progress
     .filter((item) => item.allocated > 0 && item.remaining >= 10)
     .sort((a, b) => b.remaining - a.remaining);
@@ -743,25 +761,27 @@ export const createReactiveBudgetAlert = (
     };
   }
 
-  const progress = spent / allocated;
+  const { isFullyUsed, isOverBudget, progress, usedPercent } =
+    getBudgetRiskState(spent, allocated);
   if (progress < 0.8) return null;
-  const usedPercent = formatBudgetUsedPercent(progress);
 
   return {
     amount: spent,
     baselineAmount: allocated,
     category,
-    confidence: progress >= 1 ? ("High" as const) : ("Medium" as const),
+    confidence: isOverBudget || isFullyUsed ? ("High" as const) : ("Medium" as const),
     currentAmount: spent,
     description:
-      progress >= 1
+      isOverBudget
         ? `This transaction pushes ${category} over budget at ${usedPercent}%. Consider limiting this category or transferring unused budget.`
+        : isFullyUsed
+          ? `This transaction uses the full ${category} budget. Any new spending in this category will go over budget.`
         : `This transaction puts ${category} at ${usedPercent}% of its budget. Spend carefully for the rest of the month.`,
     differenceAmount: spent - allocated,
     differencePercent: progress * 100,
     metric: `${usedPercent}% budget used`,
     reason: "This alert is calculated immediately after the transaction is saved.",
-    severity: progress >= 1 ? ("danger" as const) : ("warning" as const),
+    severity: isOverBudget ? ("danger" as const) : ("warning" as const),
     title: "Reactive budget alert",
   };
 };
@@ -802,25 +822,37 @@ export const buildFinancialIntelligence = ({
   const reactiveAlerts = budgetProgress
     .filter((item) => item.allocated > 0 && item.progress >= 0.8)
     .map((item) => {
-      const usedPercent = formatBudgetUsedPercent(item.progress);
+      const {
+        isFullyUsed,
+        isOverBudget,
+        progress,
+        remaining,
+        usedPercent,
+      } = getBudgetRiskState(item.spent, item.allocated);
 
       return {
         amount: item.spent,
         baselineAmount: item.allocated,
         category: item.category,
-        confidence: item.progress >= 1 ? ("High" as const) : ("Medium" as const),
+        confidence: isOverBudget || isFullyUsed ? ("High" as const) : ("Medium" as const),
         currentAmount: item.spent,
         description:
-          item.progress >= 1
-            ? `${item.category} is over budget by RM ${Math.abs(item.remaining).toFixed(0)}.`
+          isOverBudget
+            ? `${item.category} is over budget by RM ${Math.abs(remaining).toFixed(2)}.`
+            : isFullyUsed
+              ? `${item.category} has used the full budget. Any new spending will go over budget.`
             : `${item.category} has used ${usedPercent}% of its budget.`,
         differenceAmount: item.spent - item.allocated,
-        differencePercent: item.progress * 100,
-        impact: item.remaining,
+        differencePercent: progress * 100,
+        impact: remaining,
         metric: `${usedPercent}% used`,
         reason: "Current month category spending is compared with the assigned category budget.",
-        severity: item.progress >= 1 ? ("danger" as const) : ("warning" as const),
-        title: item.progress >= 1 ? "Budget exceeded" : "Budget almost exceeded",
+        severity: isOverBudget ? ("danger" as const) : ("warning" as const),
+        title: isOverBudget
+          ? "Budget exceeded"
+          : isFullyUsed
+            ? "Budget fully used"
+            : "Budget almost exceeded",
       };
     });
 
