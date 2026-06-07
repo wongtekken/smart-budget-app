@@ -266,9 +266,6 @@ export default function BudgetScreen() {
             ? params.injectedTemplate[0]
             : params.injectedTemplate;
           const templateData = JSON.parse(templateParam || "[]") as TemplateAllocation[];
-          const hasPercentageAllocation = templateData.some(
-            (item) => item.mode === "Percentage" && Number(item.value) > 0,
-          );
           const activeTemplateItems = templateData
             .map((item) => ({
               ...item,
@@ -285,31 +282,32 @@ export default function BudgetScreen() {
               return item.mode === "Fixed" && Boolean(matchedCategory);
             })
             .reduce((sum, item) => sum + item.value, 0);
+          const availableToApply = Number(awaitingAssign.toFixed(2));
 
-          if (hasPercentageAllocation && totalAvailable <= 0) {
+          if (availableToApply <= 0) {
             showDialog({
-              title: "Income Required",
-              message: "Add this month's income before applying a percentage template.",
+              title: "No Unassigned Income",
+              message: "Add new income or free up budget before applying a template.",
               type: "warning",
             });
             router.setParams({ injectedTemplate: "" });
             return;
           }
 
-          if (fixedTotal > totalAvailable) {
+          if (fixedTotal > availableToApply) {
             showDialog({
               title: "Template Not Applied",
               message:
-                "Fixed budgets exceed this month's available amount. Please adjust the template or add more income first.",
+                "Fixed budgets exceed this month's unassigned amount. Please adjust the template or add more income first.",
               type: "warning",
             });
             router.setParams({ injectedTemplate: "" });
             return;
           }
 
-          let newAllocations: Record<string, number> = {};
+          let newAllocations: Record<string, number> = { ...allocations };
           const skippedCategories: string[] = [];
-          const remainingAfterFixed = totalAvailable - fixedTotal;
+          const remainingAfterFixed = availableToApply - fixedTotal;
 
           activeTemplateItems.forEach((item) => {
             const { categoryName } = item;
@@ -323,13 +321,22 @@ export default function BudgetScreen() {
               return;
             }
 
+            const currentCategoryAmount = getAllocationAmount(
+              newAllocations,
+              matchedCategory,
+            );
+            let amountToAdd = 0;
+
             if (item.mode === "Fixed") {
-              newAllocations[categoryKey] = item.value;
+              amountToAdd = item.value;
             } else if (item.mode === "Percentage") {
               // 自动规整小数位，避免金额变成 19.99999
-              const calculated = (item.value / 100) * remainingAfterFixed;
-              newAllocations[categoryKey] = Number(calculated.toFixed(2));
+              amountToAdd = (item.value / 100) * remainingAfterFixed;
             }
+            newAllocations[categoryKey] = Number(
+              (currentCategoryAmount + amountToAdd).toFixed(2),
+            );
+            delete newAllocations[categoryName];
           });
 
           if (Object.keys(newAllocations).length === 0) {
@@ -349,8 +356,8 @@ export default function BudgetScreen() {
               userId: user.uid,
               month: currentMonthStr,
               allocations: newAllocations,
+              rolloverIncome,
             },
-            { merge: true },
           );
 
           showDialog({
@@ -373,15 +380,16 @@ export default function BudgetScreen() {
       executeTemplate();
     }
   }, [
-    activeCategoryNames,
+    allocations,
+    awaitingAssign,
     parentCategories,
     budgetLoaded,
     categoriesLoaded,
     currentMonthStr,
     params.injectedTemplate,
     router,
+    rolloverIncome,
     showDialog,
-    totalAvailable,
     transactionsLoaded,
   ]);
 
