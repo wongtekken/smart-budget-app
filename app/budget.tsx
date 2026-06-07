@@ -49,6 +49,21 @@ const isGoalCategory = (category: any) =>
   isGoalCategoryName(category?.name) ||
   isSavingsCategoryName(category?.name);
 
+const BUDGET_EPSILON = 0.01;
+
+const getBudgetRiskState = (spent: number, allocated: number) => {
+  const remaining = allocated - spent;
+  const progress = allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
+  const isOverBudget = allocated > 0 && remaining < -BUDGET_EPSILON;
+  const isFullyUsed =
+    allocated > 0 &&
+    !isOverBudget &&
+    (Math.abs(remaining) <= BUDGET_EPSILON || progress >= 0.995);
+  const isAtRisk = allocated > 0 && !isOverBudget && (isFullyUsed || progress >= 0.8);
+
+  return { isAtRisk, isFullyUsed, isOverBudget, progress };
+};
+
 type TemplateAllocation = {
   categoryName?: string;
   categoryId?: string;
@@ -604,11 +619,9 @@ export default function BudgetScreen() {
             const isGoalCategory =
               cat.name.startsWith("🎯") || cat.isGoal || isSavingsCategoryName(cat.name);
 
-            let progress =
-              allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
+            const { isAtRisk, isFullyUsed, isOverBudget, progress } =
+              getBudgetRiskState(spent, allocated);
             const isUnbudgeted = allocated <= 0 && spent > 0;
-            const isAtRisk = allocated > 0 && progress >= 0.8 && progress < 1;
-            const isOverBudget = allocated > 0 && spent > allocated;
 
             return (
               <TouchableOpacity
@@ -666,7 +679,7 @@ export default function BudgetScreen() {
                             <Text
                               style={[styles.atRiskText, { color: palette.warning }]}
                             >
-                              At risk
+                              {isFullyUsed ? "Used up" : "At risk"}
                             </Text>
                           </View>
                         ) : null}

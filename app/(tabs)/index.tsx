@@ -88,6 +88,20 @@ const getTransactionTime = (tx: Transaction) =>
   tx.createdAt?.toMillis?.() ?? new Date(tx.date || "1970-01-01").getTime();
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+const BUDGET_EPSILON = 0.01;
+
+const getBudgetRiskState = (spent: number, allocated: number) => {
+  const remaining = allocated - spent;
+  const progress = allocated > 0 ? spent / allocated : spent > 0 ? 1 : 0;
+  const isOverBudget = allocated > 0 && remaining < -BUDGET_EPSILON;
+  const isFullyUsed =
+    allocated > 0 &&
+    !isOverBudget &&
+    (Math.abs(remaining) <= BUDGET_EPSILON || progress >= 0.995);
+  const isAtRisk = allocated > 0 && !isOverBudget && (isFullyUsed || progress >= 0.8);
+
+  return { isAtRisk, isFullyUsed, isOverBudget, progress };
+};
 
 const isSavingsCategoryName = (name?: string) =>
   String(name || "").toLowerCase().includes("saving");
@@ -280,7 +294,8 @@ export default function DashboardScreen() {
       (sum, value) => sum + Number(value || 0),
       0,
     );
-    const budgetUsed = allocated > 0 ? expenses / allocated : 0;
+    const budgetRisk = getBudgetRiskState(expenses, allocated);
+    const budgetUsed = budgetRisk.progress;
     const netCashFlow = income - expenses;
 
     const monthProgress = getMonthProgress(currentMonth);
@@ -289,11 +304,15 @@ export default function DashboardScreen() {
       .map((category) => {
         const allocatedAmount = Number(visibleAllocations[category.id] || 0);
         const spent = spentByCategory[category.id] || spentByCategory[category.name || ""] || 0;
-        const progress = allocatedAmount > 0 ? spent / allocatedAmount : spent > 0 ? 1 : 0;
+        const { isAtRisk, isFullyUsed, isOverBudget, progress } =
+          getBudgetRiskState(spent, allocatedAmount);
 
         return {
           name: category.name || "Uncategorized",
           allocated: allocatedAmount,
+          isAtRisk,
+          isFullyUsed,
+          isOverBudget,
           spent,
           progress,
         };
@@ -301,11 +320,9 @@ export default function DashboardScreen() {
       .filter((item) => item.allocated > 0 || item.spent > 0)
       .sort((a, b) => b.progress - a.progress);
     const budgetedCategoryCount = categoryStats.filter((item) => item.allocated > 0).length;
-    const overBudgetCategoryCount = categoryStats.filter(
-      (item) => item.allocated > 0 && item.progress > 1,
-    ).length;
+    const overBudgetCategoryCount = categoryStats.filter((item) => item.isOverBudget).length;
     const warningCategoryCount = categoryStats.filter(
-      (item) => item.allocated > 0 && item.progress >= 0.85 && item.progress <= 1,
+      (item) => item.isAtRisk && !item.isOverBudget,
     ).length;
     const unbudgetedSpent = categoryStats
       .filter((item) => item.allocated === 0)
@@ -364,6 +381,9 @@ export default function DashboardScreen() {
       healthScore,
       inactiveCategorySpend,
       income,
+      isBudgetAtRisk: budgetRisk.isAtRisk,
+      isBudgetFullyUsed: budgetRisk.isFullyUsed,
+      isBudgetOver: budgetRisk.isOverBudget,
       latestTransactions: transactions.slice(0, 4),
       netCashFlow,
     };
@@ -372,9 +392,11 @@ export default function DashboardScreen() {
   const budgetStatus =
     dashboard.allocated === 0
       ? "No budget set"
-      : dashboard.budgetUsed >= 1
+      : dashboard.isBudgetOver
         ? "Over budget"
-        : dashboard.budgetUsed >= 0.8
+        : dashboard.isBudgetFullyUsed
+          ? "Budget fully used"
+          : dashboard.isBudgetAtRisk
           ? "At risk"
           : "On track";
   const budgetGradient = getBudgetGradient(dashboard.budgetUsed);
@@ -573,9 +595,9 @@ export default function DashboardScreen() {
                 {dashboard.categories.length > 0 ? (
                   dashboard.categories.map((item) => {
                     const isUnbudgeted = item.allocated === 0 && item.spent > 0;
-                    const isAtRisk =
-                      item.allocated > 0 && item.progress >= 0.8 && item.progress < 1;
-                    const isOverBudget = item.allocated > 0 && item.spent > item.allocated;
+                    const isAtRisk = item.isAtRisk;
+                    const isFullyUsed = item.isFullyUsed;
+                    const isOverBudget = item.isOverBudget;
 
                     return (
                       <TouchableOpacity
@@ -620,7 +642,7 @@ export default function DashboardScreen() {
                                     { color: palette.warning },
                                   ]}
                                 >
-                                  At risk
+                                  {isFullyUsed ? "Used up" : "At risk"}
                                 </Text>
                               </View>
                             ) : null}
