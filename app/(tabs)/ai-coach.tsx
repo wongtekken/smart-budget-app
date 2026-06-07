@@ -882,7 +882,7 @@ export default function AiCoachScreen() {
               <Text style={styles.coachStateTitle}>
                 {coachResponse?.headline || coachStateTitle}
               </Text>
-              <Text style={styles.coachStateText} numberOfLines={4}>
+              <Text style={styles.coachStateText}>
                 {coachResponse?.summary ||
                   `${primaryNotice} Refresh only when you want Gemini to write updated guidance.`}
               </Text>
@@ -1299,6 +1299,8 @@ const styles = StyleSheet.create({
   },
   coachSummaryCopy: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   coachStateLabel: {
     color: palette.primary,
