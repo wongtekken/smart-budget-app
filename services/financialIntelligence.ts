@@ -344,6 +344,7 @@ const createAbnormalSpending = (
 
 const createWeekendPatterns = (
   transactions: TransactionRecord[],
+  currentMonth: string,
   activeCategorySet: Set<string> | null,
 ) => {
   const stats: Record<
@@ -352,6 +353,7 @@ const createWeekendPatterns = (
   > = {};
 
   getExpenseTransactions(transactions).forEach((tx) => {
+    if (!String(tx.date || "").startsWith(currentMonth)) return;
     const parsed = parseDate(tx.date);
     if (!parsed) return;
     const category = getParentCategory(getTransactionCategory(tx));
@@ -396,7 +398,7 @@ const createWeekendPatterns = (
         differencePercent: ratio >= 99 ? undefined : (ratio - 1) * 100,
         impact: weekendAvg - weekdayAvg,
         metric: `${ratio >= 99 ? "High" : `${ratio.toFixed(1)}x`} weekend intensity`,
-        reason: "Average weekend spending per active day is compared with weekday spending.",
+        reason: "Current month average weekend spending per active day is compared with weekday spending.",
         severity: "warning" as const,
         title: "Weekend-sensitive pattern",
       };
@@ -816,7 +818,7 @@ export const buildFinancialIntelligence = ({
     activeCategorySet,
   );
   const abnormalSpending = createAbnormalSpending(currentSpendByCategory, baselineSeries);
-  const weekendPatterns = createWeekendPatterns(transactions, activeCategorySet);
+  const weekendPatterns = createWeekendPatterns(transactions, currentMonth, activeCategorySet);
   const lifestyleChanges = createLifestyleChanges(transactions, now, activeCategorySet);
   const budgetProgress = getBudgetProgress(currentSpendByCategory, activeAllocations);
   const reactiveAlerts = budgetProgress
