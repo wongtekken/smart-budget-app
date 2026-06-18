@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -53,6 +56,8 @@ const formatCompactCurrency = (value: number) => {
   return `RM ${value.toFixed(0)}`;
 };
 
+const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
+
 const getParentCategory = (category?: string) =>
   category ? category.split(" - ")[0] : "Other";
 
@@ -64,10 +69,319 @@ const isGoalCategoryName = (category?: string) =>
 
 const normalizeType = (type?: string) => String(type || "").toLowerCase();
 
+const escapeHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const getTransactionDescription = (tx: any) =>
+  tx.note || tx.item_description || tx.description || tx.title || "-";
+
+const getStatementType = (tx: any) => {
+  const txType = normalizeType(tx.type);
+  const isLegacyGoalExpense =
+    txType === "expense" && isGoalCategoryName(getTransactionCategory(tx));
+
+  if (txType === "income") return "Income";
+  if (txType === "transfer" || isLegacyGoalExpense) return "Transfer";
+  return "Expense";
+};
+
+const buildCategoryTotals = (transactions: any[], statementType: string) => {
+  const totals: Record<string, number> = {};
+
+  transactions.forEach((tx) => {
+    if (getStatementType(tx) !== statementType) return;
+
+    const category = getParentCategory(getTransactionCategory(tx));
+    totals[category] = (totals[category] || 0) + (Number(tx.amount) || 0);
+  });
+
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+};
+
+const buildRowsHtml = (
+  rows: string[][],
+  emptyMessage: string,
+  alignRightColumns: number[] = [],
+  colSpan = 5,
+) => {
+  if (rows.length === 0) {
+    return `<tr><td colspan="${colSpan}" class="empty">${escapeHtml(emptyMessage)}</td></tr>`;
+  }
+
+  return rows
+    .map(
+      (row) =>
+        `<tr>${row
+          .map((cell, index) => {
+            const className = alignRightColumns.includes(index) ? "right" : "";
+            return `<td class="${className}">${escapeHtml(cell)}</td>`;
+          })
+          .join("")}</tr>`,
+    )
+    .join("");
+};
+
+const buildLedgerRowsHtml = (incomeRows: any[], outgoingRows: any[]) => {
+  const rowCount = Math.max(incomeRows.length, outgoingRows.length);
+
+  if (rowCount === 0) {
+    return `<tr><td colspan="6" class="empty">No transactions recorded for this month.</td></tr>`;
+  }
+
+  return Array.from({ length: rowCount }, (_, index) => {
+    const income = incomeRows[index];
+    const outgoing = outgoingRows[index];
+    const incomeLabel = income
+      ? `${getParentCategory(getTransactionCategory(income))} - ${getTransactionDescription(income)}`
+      : "";
+    const outgoingLabel = outgoing
+      ? `${getParentCategory(getTransactionCategory(outgoing))} - ${getTransactionDescription(outgoing)}`
+      : "";
+
+    return `<tr>
+      <td>${escapeHtml(income?.date || "")}</td>
+      <td>${escapeHtml(incomeLabel)}</td>
+      <td class="right income">${income ? escapeHtml(formatCurrency(Number(income.amount) || 0)) : ""}</td>
+      <td>${escapeHtml(outgoing?.date || "")}</td>
+      <td>${escapeHtml(outgoingLabel)}</td>
+      <td class="right expense">${outgoing ? escapeHtml(formatCurrency(Number(outgoing.amount) || 0)) : ""}</td>
+    </tr>`;
+  }).join("");
+};
+
+const buildMonthlyStatementHtml = ({
+  month,
+  transactions,
+  totals,
+}: {
+  month: string;
+  transactions: any[];
+  totals: {
+    netCashFlow: number;
+    savingsRate: string;
+    totalExp: number;
+    totalInc: number;
+    totalTransfer: number;
+  };
+}) => {
+  const sortedTransactions = [...transactions].sort((a, b) =>
+    String(a.date || "").localeCompare(String(b.date || "")),
+  );
+  const generatedAt = new Date().toLocaleString();
+  const expenseCategories = buildCategoryTotals(sortedTransactions, "Expense");
+  const incomeCategories = buildCategoryTotals(sortedTransactions, "Income");
+  const transferCategories = buildCategoryTotals(sortedTransactions, "Transfer");
+  const incomeTransactions = sortedTransactions.filter(
+    (tx) => getStatementType(tx) === "Income",
+  );
+  const outgoingTransactions = sortedTransactions.filter(
+    (tx) => getStatementType(tx) !== "Income",
+  );
+
+  const categoryRows = [
+    ...expenseCategories.map(([category, amount]) => ["Expense", category, formatCurrency(amount)]),
+    ...incomeCategories.map(([category, amount]) => ["Income", category, formatCurrency(amount)]),
+    ...transferCategories.map(([category, amount]) => [
+      "Transfer",
+      category,
+      formatCurrency(amount),
+    ]),
+  ];
+
+  const transactionRows = sortedTransactions.map((tx) => [
+    tx.date || "-",
+    getStatementType(tx),
+    getParentCategory(getTransactionCategory(tx)),
+    getTransactionDescription(tx),
+    formatCurrency(Number(tx.amount) || 0),
+  ]);
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page { margin: 28px; }
+    body {
+      color: #1f2933;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .header {
+      border-bottom: 2px solid #f97316;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+    }
+    .eyebrow {
+      color: #f97316;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: 26px;
+      margin: 4px 0 6px;
+    }
+    h2 {
+      font-size: 16px;
+      margin: 20px 0 8px;
+    }
+    .meta {
+      color: #667085;
+      font-size: 11px;
+    }
+    .summary {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(4, 1fr);
+      margin: 14px 0 18px;
+    }
+    .metric {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .metric-label {
+      color: #667085;
+      font-size: 10px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+    .metric-value {
+      font-size: 16px;
+      font-weight: 900;
+    }
+    table {
+      border-collapse: collapse;
+      margin-bottom: 8px;
+      width: 100%;
+    }
+    th {
+      background: #f2f4f7;
+      color: #344054;
+      font-size: 10px;
+      padding: 8px;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    td {
+      border-bottom: 1px solid #eaecf0;
+      padding: 8px;
+      vertical-align: top;
+    }
+    .right {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .ledger th:nth-child(1),
+    .ledger th:nth-child(2),
+    .ledger th:nth-child(3) {
+      background: #ecfdf3;
+    }
+    .ledger th:nth-child(4),
+    .ledger th:nth-child(5),
+    .ledger th:nth-child(6) {
+      background: #fff1f2;
+    }
+    .ledger td:nth-child(3) {
+      border-right: 2px solid #d0d5dd;
+    }
+    .income {
+      color: #15803d;
+      font-weight: 800;
+    }
+    .expense {
+      color: #b42318;
+      font-weight: 800;
+    }
+    .empty {
+      color: #667085;
+      font-style: italic;
+      text-align: center;
+    }
+    .footer {
+      border-top: 1px solid #eaecf0;
+      color: #667085;
+      font-size: 10px;
+      margin-top: 24px;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="eyebrow">Smart Budget</div>
+    <h1>Monthly Statement</h1>
+    <div class="meta">Month: ${escapeHtml(getMonthLabel(month))} | Generated: ${escapeHtml(generatedAt)}</div>
+  </div>
+
+  <h2>Monthly Summary</h2>
+  <div class="summary">
+    <div class="metric">
+      <div class="metric-label">Income</div>
+      <div class="metric-value">${escapeHtml(formatCurrency(totals.totalInc))}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Expense</div>
+      <div class="metric-value">${escapeHtml(formatCurrency(totals.totalExp))}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Transfer</div>
+      <div class="metric-value">${escapeHtml(formatCurrency(totals.totalTransfer))}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Net Cash Flow</div>
+      <div class="metric-value">${escapeHtml(formatCurrency(totals.netCashFlow))}</div>
+    </div>
+  </div>
+  <p class="meta">Savings rate: ${escapeHtml(totals.netCashFlow >= 0 ? `${totals.savingsRate}%` : "Deficit")}</p>
+
+  <h2>Monthly Ledger</h2>
+  <table class="ledger">
+    <thead>
+      <tr>
+        <th>Income Date</th>
+        <th>Income Details</th>
+        <th class="right">Income</th>
+        <th>Expense Date</th>
+        <th>Expense / Transfer Details</th>
+        <th class="right">Expense</th>
+      </tr>
+    </thead>
+    <tbody>${buildLedgerRowsHtml(incomeTransactions, outgoingTransactions)}</tbody>
+  </table>
+
+  <h2>Category Breakdown</h2>
+  <table>
+    <thead><tr><th>Type</th><th>Category</th><th class="right">Amount</th></tr></thead>
+    <tbody>${buildRowsHtml(categoryRows, "No category activity for this month.", [2], 3)}</tbody>
+  </table>
+
+  <h2>Transaction Register</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th class="right">Amount</th></tr></thead>
+    <tbody>${buildRowsHtml(transactionRows, "No transactions recorded for this month.", [4])}</tbody>
+  </table>
+
+  <div class="footer">Generated by Smart Budget App. This statement is based on records entered in the app.</div>
+</body>
+</html>`;
+};
+
 export default function AnalysisScreen() {
   const [activeTab, setActiveTab] =
     useState<"Expense" | "Income" | "Transfer" | "Overview">("Expense");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const selectedMonth = getLocalMonthStr(currentDate);
   const currentMonth = getLocalMonthStr();
@@ -213,6 +527,49 @@ export default function AnalysisScreen() {
     setCurrentDate(getDateFromMonth(currentMonth));
   };
 
+  const handleExportStatement = async () => {
+    if (exportingPdf) return;
+
+    setExportingPdf(true);
+    try {
+      const html = buildMonthlyStatementHtml({
+        month: selectedMonth,
+        totals: {
+          netCashFlow,
+          savingsRate,
+          totalExp,
+          totalInc,
+          totalTransfer,
+        },
+        transactions,
+      });
+      const { uri } = await Print.printToFileAsync({
+        html,
+      });
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        Alert.alert("PDF Created", `Monthly statement saved at:\n${uri}`);
+        return;
+      }
+
+      await Sharing.shareAsync(uri, {
+        dialogTitle: `${getMonthLabel(selectedMonth)} Statement`,
+        mimeType: "application/pdf",
+        UTI: "com.adobe.pdf",
+      });
+    } catch (error) {
+      Alert.alert(
+        "Export Failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to export the monthly statement right now.",
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const TabButton = ({
     title,
   }: {
@@ -240,7 +597,15 @@ export default function AnalysisScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <AppHeader title="Financial Analysis" />
+      <AppHeader
+        rightAction={{
+          accessibilityLabel: "Export monthly statement as PDF",
+          color: exportingPdf ? palette.textSoft : palette.primary,
+          icon: exportingPdf ? "hourglass-outline" : "download-outline",
+          onPress: handleExportStatement,
+        }}
+        title="Financial Analysis"
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
