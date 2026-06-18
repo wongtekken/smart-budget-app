@@ -1036,7 +1036,11 @@ export default function AiCoachScreen() {
         </View>
 
         <View style={styles.section}>
-          <SectionToggle count={aiInsights.monthlyReview.length} section="review" title="Analytical review" />
+          <SectionToggle
+            count={aiInsights.monthlyReview.length}
+            section="review"
+            title="Analytical review (3 months)"
+          />
           {expandedSection === "review" && (
             <View style={styles.expandedContent}>
               <View style={styles.reviewCard}>

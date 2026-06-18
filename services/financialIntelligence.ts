@@ -173,9 +173,17 @@ const shiftMonth = (month: string, offset: number) => {
 const getMonthRange = (currentMonth: string, count: number) =>
   Array.from({ length: count }, (_, index) => shiftMonth(currentMonth, -index - 1));
 
+const getRecentMonthRange = (currentMonth: string, count: number) =>
+  Array.from({ length: count }, (_, index) => shiftMonth(currentMonth, -index));
+
 const sumValues = (values: number[]) => values.reduce((sum, value) => sum + value, 0);
 
 const average = (values: number[]) => (values.length > 0 ? sumValues(values) / values.length : 0);
+
+const formatMoney = (value: number) => `RM ${Math.abs(value).toFixed(0)}`;
+
+const formatSignedMoney = (value: number) =>
+  `${value >= 0 ? "" : "-"}${formatMoney(value)}`;
 
 const standardDeviation = (values: number[]) => {
   const mean = average(values);
@@ -734,6 +742,110 @@ const createGoalRecommendations = (
   ];
 };
 
+const createThreeMonthReview = (
+  transactions: TransactionRecord[],
+  budgets: MonthlyBudgetRecord[],
+  currentMonth: string,
+  activeCategorySet: Set<string> | null,
+) => {
+  const recentMonths = getRecentMonthRange(currentMonth, BASELINE_MONTHS);
+  const chronologicalMonths = [...recentMonths].reverse();
+  const periodLabel = `${chronologicalMonths[0]} to ${chronologicalMonths[chronologicalMonths.length - 1]}`;
+  const expenseTotals = recentMonths.map((month) =>
+    getTotalForMonth(transactions, month, "expense"),
+  );
+  const incomeTotals = recentMonths.map((month) =>
+    getTotalForMonth(transactions, month, "income"),
+  );
+  const activeMonthCount = Math.max(
+    expenseTotals.filter((amount, index) => amount > 0 || incomeTotals[index] > 0).length,
+    1,
+  );
+  const totalExpense = sumValues(expenseTotals);
+  const totalIncome = sumValues(incomeTotals);
+  const netCashFlow = totalIncome - totalExpense;
+
+  if (totalExpense <= 0 && totalIncome <= 0) {
+    return [
+      `Review period: ${periodLabel}. No transaction activity was found in the recent 3-month window.`,
+      "Add more transactions across several months so the coach can compare trends and budget consistency.",
+    ];
+  }
+
+  const spendByCategory = recentMonths.reduce<Record<string, number>>((totals, month) => {
+    const monthSpend = filterCategoryAmounts(
+      getSpendByCategoryForMonth(transactions, month),
+      activeCategorySet,
+    );
+    Object.entries(monthSpend).forEach(([category, amount]) => {
+      totals[category] = (totals[category] || 0) + amount;
+    });
+    return totals;
+  }, {});
+
+  const topCategory = Object.entries(spendByCategory)
+    .sort((a, b) => b[1] - a[1])[0];
+  const categoryLine = topCategory
+    ? `${topCategory[0]} is the largest 3-month spending area at ${formatMoney(topCategory[1])}.`
+    : "No expense category is large enough to identify a dominant spending area yet.";
+
+  const trendCandidates = Object.keys(spendByCategory)
+    .map((category) => {
+      const series = chronologicalMonths.map(
+        (month) =>
+          filterCategoryAmounts(getSpendByCategoryForMonth(transactions, month), activeCategorySet)[
+            category
+          ] || 0,
+      );
+      const latest = series[series.length - 1] || 0;
+      const priorAverage = average(series.slice(0, -1));
+      return {
+        category,
+        difference: latest - priorAverage,
+        latest,
+        priorAverage,
+      };
+    })
+    .filter((item) => Math.abs(item.difference) >= 20)
+    .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
+  const strongestTrend = trendCandidates[0];
+  const trendLine = strongestTrend
+    ? strongestTrend.difference > 0
+      ? `${strongestTrend.category} is rising: this month is ${formatMoney(strongestTrend.latest)}, which is ${formatMoney(strongestTrend.difference)} above the previous 2-month average of ${formatMoney(strongestTrend.priorAverage)}.`
+      : `${strongestTrend.category} is easing: this month is ${formatMoney(strongestTrend.latest)}, which is ${formatMoney(strongestTrend.difference)} below the previous 2-month average of ${formatMoney(strongestTrend.priorAverage)}.`
+    : "Category spending is relatively stable across the recent 3-month window.";
+
+  let overBudgetCount = 0;
+  let unbudgetedSpend = 0;
+  recentMonths.forEach((month) => {
+    const budget = filterCategoryAmounts(getBudgetForMonth(budgets, month), activeCategorySet);
+    const spent = filterCategoryAmounts(
+      getSpendByCategoryForMonth(transactions, month),
+      activeCategorySet,
+    );
+
+    Object.entries(spent).forEach(([category, amount]) => {
+      const allocated = Number(budget[category] || 0);
+      if (allocated <= 0 && amount > 0) {
+        unbudgetedSpend += amount;
+      } else if (amount > allocated + BUDGET_EPSILON) {
+        overBudgetCount += 1;
+      }
+    });
+  });
+  const budgetLine =
+    overBudgetCount > 0 || unbudgetedSpend > 0
+      ? `Budget consistency needs attention: ${overBudgetCount} category-months exceeded budget, and ${formatMoney(unbudgetedSpend)} was recorded in categories or months without a matching budget allocation.`
+      : "Budget consistency looks steady across the recent 3 months, with no category-months above budget.";
+
+  return [
+    `Review period: ${periodLabel}. Total expense was ${formatMoney(totalExpense)}, averaging ${formatMoney(totalExpense / activeMonthCount)} per active month; net cash flow was ${formatSignedMoney(netCashFlow)}.`,
+    categoryLine,
+    trendLine,
+    budgetLine,
+  ];
+};
+
 export const createReactiveBudgetAlert = (
   transaction: TransactionRecord,
   transactions: TransactionRecord[],
@@ -887,12 +999,12 @@ export const buildFinancialIntelligence = ({
     budgetProgress,
   );
 
-  const monthlyReview = [
-    abnormalSpending[0]?.description || "No major abnormal spending was detected this month.",
-    reactiveAlerts[0]?.description || "No category is currently above the budget risk threshold.",
-    savingOpportunities[0]?.description || "No strong saving opportunity is visible yet.",
-    goalRecommendations[0]?.description || "Keep unused funds available for savings or next cycle.",
-  ];
+  const monthlyReview = createThreeMonthReview(
+    transactions,
+    budgets,
+    currentMonth,
+    activeCategorySet,
+  );
 
   return {
     abnormalSpending,
