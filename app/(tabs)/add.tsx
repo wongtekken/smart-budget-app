@@ -82,6 +82,17 @@ type EntrySource = "manual" | "receipt" | "voice";
 const RECEIPT_MAX_EDGE = 1600;
 const RECEIPT_JPEG_QUALITY = 0.78;
 const VOICE_WAVE_BAR_HEIGHTS = [18, 34, 52, 28, 46, 64, 38, 56, 24];
+const AMOUNT_PATTERN = /^(?:\d+|\d*\.\d{1,2})$/;
+
+const parseAmountInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!AMOUNT_PATTERN.test(trimmed)) return null;
+
+  const numericAmount = Number(trimmed);
+  return Number.isFinite(numericAmount) && numericAmount > 0
+    ? Number(numericAmount.toFixed(2))
+    : null;
+};
 
 const InputField = ({ label, children }: InputFieldProps) => (
   <View style={styles.inputGroup}>
@@ -742,8 +753,9 @@ export default function AddTransactionScreen() {
   // 保存逻辑
   // ==========================================
   const handleSave = async () => {
-    if (!amount) {
-      appAlert("Oops!", "Please enter an amount.");
+    const numericAmount = parseAmountInput(amount);
+    if (numericAmount === null) {
+      appAlert("Oops!", "Please enter a valid amount greater than 0, with up to 2 decimal places.");
       return;
     }
     if (!category) {
@@ -758,7 +770,6 @@ export default function AddTransactionScreen() {
     }
 
     try {
-      const numericAmount = parseFloat(amount);
       const now = new Date();
       const isTransfer = selectedSegment === "Transfer";
       const goalFields = isTransfer ? { goalId: selectedGoalId || null } : { goalId: null };
@@ -1127,7 +1138,7 @@ export default function AddTransactionScreen() {
                 ]}
                 value={amount}
                 onChangeText={setAmount}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor="#CCC"
               />
