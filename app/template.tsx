@@ -28,12 +28,13 @@ import { AppHeader } from "../components/app-header";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
+import { parseAmountInput } from "../services/amountValidation";
 
 type AllocationType = {
   categoryId: string;
   categoryName: string;
   mode: "Fixed" | "Percentage";
-  value: number;
+  value: number | string;
 };
 
 type TemplateType = {
@@ -126,7 +127,7 @@ export default function TemplateScreen() {
   // 计算实时百分比总额
   const totalPercentage = draftAllocations
     .filter((item) => item.mode === "Percentage")
-    .reduce((sum, item) => sum + item.value, 0);
+    .reduce((sum, item) => sum + (Number(item.value) || 0), 0);
 
   const isExceeding = totalPercentage > 100;
 
@@ -201,8 +202,29 @@ export default function TemplateScreen() {
       return;
     }
 
+    const validatedAllocations: AllocationType[] = [];
+    for (const allocation of draftAllocations) {
+      const value = parseAmountInput(String(allocation.value), {
+        allowZero: true,
+      });
+
+      if (
+        value === null ||
+        (allocation.mode === "Percentage" && value > 100)
+      ) {
+        showDialog({
+          title: "Oops",
+          message: "Please enter valid template amounts. Percentages must be 0-100, and amounts can use up to 2 decimal places.",
+          type: "warning",
+        });
+        return;
+      }
+
+      validatedAllocations.push({ ...allocation, value });
+    }
+
     try {
-      const allocationsForSave = normalizeAllocationsForSave(draftAllocations);
+      const allocationsForSave = normalizeAllocationsForSave(validatedAllocations);
       if (editingTemplateId) {
         await updateDoc(doc(db, "templates", editingTemplateId), {
           name: trimmedName,
@@ -558,14 +580,14 @@ export default function TemplateScreen() {
                     </TouchableOpacity>
                     <TextInput
                       style={styles.draftValueInput}
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       multiline={false}
                       numberOfLines={1}
                       placeholder="0"
                       scrollEnabled={false}
                       value={draft.value ? draft.value.toString() : ""}
                       onChangeText={(val) =>
-                        updateDraftItem(index, "value", Number(val) || 0)
+                        updateDraftItem(index, "value", val)
                       }
                     />
                     <TouchableOpacity

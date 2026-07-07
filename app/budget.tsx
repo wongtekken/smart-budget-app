@@ -30,6 +30,7 @@ import {
   getAllocationAmount,
   getParentCategoryKey,
 } from "../services/categoryData";
+import { parseAmountInput } from "../services/amountValidation";
 
 const getLocalMonthStr = () => {
   const now = new Date();
@@ -412,7 +413,16 @@ export default function BudgetScreen() {
     const user = auth.currentUser;
     if (!user || !editCategoryId) return;
 
-    const newAmount = Number(editAmount) || 0;
+    const newAmount = parseAmountInput(editAmount, { allowZero: true });
+    if (newAmount === null) {
+      showDialog({
+        title: "Oops",
+        message: "Please enter a valid budget amount with up to 2 decimal places.",
+        type: "warning",
+      });
+      return;
+    }
+
     const newAllocations = { ...allocations, [editCategoryId]: newAmount };
     delete newAllocations[editCategoryName];
 
@@ -447,10 +457,11 @@ export default function BudgetScreen() {
       });
       return;
     }
-    if (!addAmount) {
+    const newAmount = parseAmountInput(addAmount, { allowZero: true });
+    if (newAmount === null) {
       showDialog({
         title: "Oops",
-        message: "Please enter an amount.",
+        message: "Please enter a valid budget amount with up to 2 decimal places.",
         type: "warning",
       });
       return;
@@ -459,7 +470,6 @@ export default function BudgetScreen() {
     const user = auth.currentUser;
     if (!user) return;
 
-    const newAmount = Number(addAmount) || 0;
     const newAllocations = { ...allocations, [addCategoryId]: newAmount };
     delete newAllocations[addCategoryName];
 
@@ -827,7 +837,7 @@ export default function BudgetScreen() {
               </Text>
               <TextInput
                 style={styles.modalInput}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor="#CCC"
                 value={editAmount}
@@ -918,7 +928,7 @@ export default function BudgetScreen() {
               </Text>
               <TextInput
                 style={styles.modalInput}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor="#CCC"
                 value={addAmount}

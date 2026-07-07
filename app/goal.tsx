@@ -30,6 +30,7 @@ import { AppHeader } from "../components/app-header";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius, shadow, spacing } from "../constants/ui";
 import { auth, db } from "../firebaseConfig";
+import { parseAmountInput } from "../services/amountValidation";
 
 type GoalType = {
   id: string;
@@ -200,11 +201,33 @@ export default function GoalScreen() {
       return;
     }
 
+    const initialAmt = newInitialAmount.trim()
+      ? parseAmountInput(newInitialAmount, { allowZero: true })
+      : 0;
+    if (initialAmt === null) {
+      showDialog({
+        title: "Oops",
+        message: "Please enter a valid initial deposit with up to 2 decimal places.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const targetAmt =
+      newType === "Target" ? parseAmountInput(newTargetAmount) : null;
+    if (newType === "Target" && targetAmt === null) {
+      showDialog({
+        title: "Oops",
+        message: "Please enter a valid target amount greater than 0, with up to 2 decimal places.",
+        type: "warning",
+      });
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) return;
 
     try {
-      const initialAmt = Number(newInitialAmount) || 0;
       const baseData: any = {
         type: newType,
         title: trimmedTitle,
@@ -212,7 +235,7 @@ export default function GoalScreen() {
       };
 
       if (newType === "Target") {
-        baseData.targetAmount = Number(newTargetAmount);
+        baseData.targetAmount = targetAmt;
         baseData.deadline = formatDate(deadlineDate);
       }
 
@@ -609,7 +632,7 @@ export default function GoalScreen() {
               <TextInput
                 style={styles.modalInput}
                 placeholder="RM 0.00"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholderTextColor="#CCC"
                 value={newInitialAmount}
                 onChangeText={setNewInitialAmount}
@@ -634,7 +657,7 @@ export default function GoalScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="RM 5000"
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     placeholderTextColor="#CCC"
                     value={newTargetAmount}
                     onChangeText={setNewTargetAmount}

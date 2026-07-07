@@ -54,6 +54,7 @@ import {
   CategoryRecord,
   findCategorySelection,
 } from "../../services/categoryData";
+import { parseAmountInput } from "../../services/amountValidation";
 
 // 🚨 新增：引入你写好的 AI 解析服务
 import {
@@ -82,17 +83,6 @@ type EntrySource = "manual" | "receipt" | "voice";
 const RECEIPT_MAX_EDGE = 1600;
 const RECEIPT_JPEG_QUALITY = 0.78;
 const VOICE_WAVE_BAR_HEIGHTS = [18, 34, 52, 28, 46, 64, 38, 56, 24];
-const AMOUNT_PATTERN = /^(?:\d+|\d*\.\d{1,2})$/;
-
-const parseAmountInput = (value: string) => {
-  const trimmed = value.trim();
-  if (!AMOUNT_PATTERN.test(trimmed)) return null;
-
-  const numericAmount = Number(trimmed);
-  return Number.isFinite(numericAmount) && numericAmount > 0
-    ? Number(numericAmount.toFixed(2))
-    : null;
-};
 
 const InputField = ({ label, children }: InputFieldProps) => (
   <View style={styles.inputGroup}>
