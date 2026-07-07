@@ -17,7 +17,7 @@ import {
 import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
 import { useAppDialog } from "../components/app-dialog";
 import { palette, radius } from "../constants/ui";
-import { auth } from "../firebaseConfig";
+import { auth, setAuthKeepSignedIn } from "../firebaseConfig";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -43,8 +43,10 @@ export default function LoginScreen() {
 
   // 🚨 新增：处理登录的核心逻辑
   const handleLogin = async () => {
+    const trimmedEmail = email.trim();
+
     // 检查是否为空
-    if (!email || !password) {
+    if (!trimmedEmail || !password) {
       showDialog({
         title: "Oops!",
         message: "Please enter your email and password.",
@@ -54,8 +56,9 @@ export default function LoginScreen() {
     }
 
     try {
+      await setAuthKeepSignedIn(keepSignedIn);
       // 向 Firebase 发起验证请求
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, trimmedEmail, password);
       // 验证成功！门打开了，前往主页
       router.replace("/(tabs)");
     } catch {

@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 // @ts-ignore
-import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth, initializeAuth, getReactNativePersistence, inMemoryPersistence, setPersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -23,5 +23,13 @@ export const auth =
         persistence: getReactNativePersistence(ReactNativeAsyncStorage),
       })
     : getAuth(app);
+
+export const setAuthKeepSignedIn = (keepSignedIn: boolean) =>
+  setPersistence(
+    auth,
+    keepSignedIn && typeof getReactNativePersistence === "function"
+      ? getReactNativePersistence(ReactNativeAsyncStorage)
+      : inMemoryPersistence,
+  );
 
 export const db = getFirestore(app);
